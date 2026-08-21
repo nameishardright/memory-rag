@@ -1,0 +1,24 @@
+{
+  "draft": false,
+  "note": "v1 已验收(2026-08-21,zihao 授权 CC 代裁,审计轨迹见教学 doc 实验1节)。裁决:仅 q9 expect 加档 教学doc(其 §4 是'三方法怎么手搓'的正面答案,语料演化产生的第二真源);指南第4章拒收——它的'三'是 MCP 三原语(resources/tools/prompts),不是 stdio 三方法(initialize/tools/list/tools/call),答上去是错的;其余 17 条维持原判(尺子稳定性优先,不为抬分放宽)。expect 按文件级判定,命中任一即算中。改金标必须重跑 eval 并在教学 doc 记录新基线。",
+  "queries": [
+    {"q": "端到端全绿但被测组件可能根本没被调用,怎么判真", "expect": ["轨迹评估vs端到端评估.md"]},
+    {"q": "什么时候用 ReAct 什么时候用 pipeline", "expect": ["qc用pipeline还是react-20260814.md"]},
+    {"q": "ES 查出来 0 条能直接当没发生吗", "expect": ["grep模式跟日志格式走+对不上先查口径.md", "判真数据源要先知道它的盲区.md"]},
+    {"q": "上线后没报错就说明代码稳吗", "expect": ["零流量上线等于没验证.md"]},
+    {"q": "烧钱或不可逆操作之前该做什么", "expect": ["烧钱动作前先跑零成本探针.md", "人转述的标识符先探针再落盘.md"]},
+    {"q": "对方说已经重启了已经处理了,怎么核实", "expect": ["2026-08-17-重启不等于停job-轮询慢SQL止血.md"]},
+    {"q": "监控系统自己在高峰期挂了会怎么骗人", "expect": ["20260819-报错原文漏报-两层截断bug.md", "判真主路断了换独立数据源.md"]},
+    {"q": "上下文工程四策略是什么", "expect": ["指南第3章-记忆系统与上下文工程.md"]},
+    {"q": "MCP 协议一共几个方法,怎么手搓", "expect": ["第2周-实战-taskid分析agent.md", "第5-6周-毕业项目2.0-记忆RAG.md"]},
+    {"q": "多智能体什么时候值得上,代价是什么", "expect": ["指南第5章-多智能体协作模式.md", "2026-08-19-CC自身的多智能体模式对照p132.md"]},
+    {"q": "agent 评测分哪三个层级", "expect": ["指南第7章-学习评估与进化.md", "轨迹评估vs端到端评估.md"]},
+    {"q": "prod redis 哨兵怎么连", "expect": ["prod-redis-connection.md"]},
+    {"q": "国内生产库还能直连写吗,SQL 怎么上", "expect": ["archery-sql-audit-platform.md"]},
+    {"q": "打包部署后改动没生效先查什么", "expect": ["rh-package-verify-jar-freshness.md", "git-worktree-breaks-git-properties.md"]},
+    {"q": "兜底输出的原则,低质量 fallback 有什么危害", "expect": ["兜底输出宁空别骗.md"]},
+    {"q": "记忆库会不会越攒越脏,怎么维护", "expect": ["agentic-loop与文件记忆.md", "memory-rules.md"]},
+    {"q": "1006 超时到底是谁的责任", "expect": ["openapi-timeout-1006-real-attribution.md"]},
+    {"q": "死循环烧钱怎么防,agent 运行时故障有哪几类", "expect": ["指南第9章-AgentOps与生产化落地.md"]}
+  ]
+}

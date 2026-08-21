@@ -1,0 +1,36 @@
+# memory_rag — 给 zihao 三层记忆建的 RAG(毕业项目 2.0)
+
+**触发时机**:排查/写方案/做设计决策前查"我以前踩过的同构坑";复习 agent 教材概念+自己的实战案例;面试前按主题捞素材。
+
+## 语料(三源,启动时现读现建,无需手动重建索引)
+
+| source | 目录 | 内容 |
+|---|---|---|
+| case | `Desktop\Agent学习计划\rh学习记忆\` | 实战原则笔记 |
+| book | `Desktop\Agent学习计划\notes\` | 两本教材的章节笔记 |
+| mem | `~\.claude\projects\C--Users-zihao\memory\` | CC 长期记忆(**凭据脱敏**:password/token/key 类的值→`<REDACTED>`) |
+
+排除 `MEMORY.md`(纯索引)。切块:按 `#/##/###` 标题,超 1500 字符再硬切(重叠 150)。
+
+## 入口
+
+```bash
+py -3.12 mr.py stats                                    # 语料/分词器/向量层状态
+py -3.12 mr.py search "端到端绿了但组件没被测到" --mode bm25   # mode: bm25|vec|hybrid(默认)
+py -3.12 mr.py eval --mode all -v                       # 金标评测三方对比,-v 看 miss
+py -3.12 mr.py setup-vec                                # 装向量依赖(清华镜像)+预拉 bge 模型
+```
+
+MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC 会话直接可用。
+更新命令:`claude mcp list` 看健康;卸载:`claude mcp remove -s user rh-memory` + 删本目录 + 删 `.cache\`。
+
+## 坑
+
+- **向量层没装不炸**:hybrid/vec 自动回退 bm25,结果里 `note` 会说明——别把回退结果当混合结果读。
+- 模型下载走 `HF_ENDPOINT=https://hf-mirror.com`(代码里已默认);pip 走清华镜像。
+- embedding 缓存在 `.cache\`,按 chunk md5 增量复用;改语料只重算改动块。换模型名会全量重算。
+- `MR_TOKENIZER=bigram` 环境变量可强制关 jieba(分词器对比实验用)。
+- MCP 纪律:`mr_mcp_server.py` 里 stdout 已换成 stderr,库里随便 print 不会打脏协议流——但别改掉开头那两行。
+- 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks)。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
+
+教学 doc(设计决策×章节):`Desktop\Agent学习计划\notes\第5-6周-毕业项目2.0-记忆RAG.md`
