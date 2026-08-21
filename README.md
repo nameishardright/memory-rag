@@ -24,6 +24,18 @@ py -3.12 mr.py setup-vec                                # 装向量依赖(清华
 MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC 会话直接可用。
 更新命令:`claude mcp list` 看健康;卸载:`claude mcp remove -s user rh-memory` + 删本目录 + 删 `.cache\`。
 
+## 性能(2026-08-21 分腿计时定案)
+
+- 冷启动 35.5s 的 **88% 是 `import torch`**(31.4s,Windows DLL 加载),模型加载只 0.1s、暖查询 0ms——别优化错腿。
+- **MCP server 已做主线程分段预热**(答完 tools/list 后暖):会话里首查 35s→**0.45s**。⚠️后台线程 import torch 慢一倍(~70s),别改回线程方案。
+- CLI 一次性进程躲不开 torch 税:**快查用 `--mode bm25`**(4ms 级,17/18·.852 够用),要语义再上 hybrid。
+- 后续候选:ONNX 化 encode(冷启动可到 ~6s),引新依赖需单独验证再上。
+
+## 仓库
+
+- git 私库 `nameishardright/memory-rag`(https,凭据走 Git Credential Manager,同 supplier-health);**改本体当轮必 commit+push**。`.cache/`(模型+embedding)不进 git,可重建。
+- Google Drive 备份随「海马云」项 robocopy(`/XD .cache`),清单见 `G:\My Drive\AI备份\_备份清单.md`。
+
 ## 坑
 
 - **向量层没装不炸**:hybrid/vec 自动回退 bm25,结果里 `note` 会说明——别把回退结果当混合结果读。
