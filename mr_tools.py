@@ -89,7 +89,10 @@ REGISTRY = {
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
                 "mem(个人长期记忆)。查不到返回空 hits,也是正常结果。hybrid 模式每条带 legs(词法/语义两腿"
-                "各排第几,双腿都靠前=共识强);snippet 已对准命中词。引用前用 memory_get 看全文。",
+                "各排第几,双腿都靠前=共识强);snippet 已对准命中词。引用前用 memory_get 看全文。"
+                "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
+                "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"
+                "③已知目标文件名就直接 memory_get,别绕检索。",
         "schema": {"type": "object", "properties": {
             "query": {"type": "string", "description": "自然语言问题或关键词,中文为主"},
             "mode": {"type": "string", "enum": ["bm25", "vec", "hybrid"],

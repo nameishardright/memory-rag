@@ -36,6 +36,13 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - git 私库 `nameishardright/memory-rag`(https,凭据走 Git Credential Manager,同 supplier-health);**改本体当轮必 commit+push**。`.cache/`(模型+embedding)不进 git,可重建。
 - Google Drive 备份随「海马云」项 robocopy(`/XD .cache`),清单见 `G:\My Drive\AI备份\_备份清单.md`。
 
+## 查询技巧(2026-08-21 三步实验定案:英文全偏→中文常用词到领域→中文罕见词精准命中)
+
+- **用语料的语言问**:语料中文为主,`pr merge failed` 这种英文短查询词法腿零重合、向量腿(bge-zh)也弱。
+- **用罕见词问**:`直合 cherry-pick 冲突` 一发命中 gerrit-workflow;`gerrit 合入` 这类高频实体词满语料都是,零区分度还淹掉 how-to。
+- **已知文件直接 `get`**,检索是给"不知道在哪"用的。
+- 多义词(merge/代理)检索分不清——看 `::` 块标题人裁,或换更具体的词重问。
+
 ## 坑
 
 - **向量层没装不炸**:hybrid/vec 自动回退 bm25,结果里 `note` 会说明——别把回退结果当混合结果读。
