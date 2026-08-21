@@ -22,10 +22,23 @@ def _ensure(mode):
         return _STATE
 
 
+def _snippet(text, query, width=300):
+    """片段以首个命中词为中心截窗,不再固定取块头——命中词在窗外的预览等于没预览(2026-08-21 用户实踩)。
+    纯语义命中(块里没有查询词面)退回块头。"""
+    toks = sorted({t for t in mr_index.tokenize(query) if len(t) >= 2}, key=len, reverse=True)
+    low = text.lower()
+    pos = min((p for p in (low.find(t) for t in toks) if p >= 0), default=-1)
+    if pos <= 40:
+        return text[:width]
+    start = pos - 40
+    return "…" + text[start:start + width]
+
+
 def memory_search(query, mode="hybrid", topk=5, source=None):
     st = _ensure(mode)
     chunks, note = st["chunks"], ""
     bm = st["bm25"].search(query, topk=50)
+    leg_names = None
     if mode == "bm25":
         ranked = bm
     else:
@@ -37,14 +50,22 @@ def memory_search(query, mode="hybrid", topk=5, source=None):
             ranked = v.search(query, topk=50)
         else:
             ranked = mr_index.rrf_files(chunks, [bm, v.search(query, topk=50)])
+            leg_names = ("bm25", "vec")
     hits = []
-    for i, score in ranked:
+    for row in ranked:
+        i, score, legs = (row if len(row) == 3 else (row[0], row[1], None))
         c = chunks[i]
         if source and c["source"] != source:
             continue
-        hits.append({"rank": len(hits) + 1, "score": round(float(score), 4),
-                     "source": c["source"], "file": c["file"], "heading": c["heading"],
-                     "snippet": c["text"][:300]})
+        h = {"rank": len(hits) + 1, "score": round(float(score), 4),
+             "source": c["source"], "file": c["file"], "heading": c["heading"],
+             "snippet": _snippet(c["text"], query)}
+        if legs is not None and leg_names:
+            # 只披露机制(每条腿排第几),不下"低置信"判断——weak 旗试过一版当场撤:
+            # "无腿前3=凑数"把双腿共识型正确答案(bm25#6+vec#7 靠合力赢)标成了低置信,
+            # RRF 的价值恰恰是两票中庸胜过一票高分。置信判断要有自己的金标才配自动化,先留给读者。
+            h["legs"] = "+".join(f"{n}#{r + 1}" for n, r in zip(leg_names, legs) if r is not None)
+        hits.append(h)
         if len(hits) >= topk:
             break
     return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "note": note, "hits": hits}
@@ -67,7 +88,8 @@ REGISTRY = {
         "fn": memory_search,
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
-                "mem(个人长期记忆)。查不到返回空 hits,也是正常结果。",
+                "mem(个人长期记忆)。查不到返回空 hits,也是正常结果。hybrid 模式每条带 legs(词法/语义两腿"
+                "各排第几,双腿都靠前=共识强);snippet 已对准命中词。引用前用 memory_get 看全文。",
         "schema": {"type": "object", "properties": {
             "query": {"type": "string", "description": "自然语言问题或关键词,中文为主"},
             "mode": {"type": "string", "enum": ["bm25", "vec", "hybrid"],

@@ -154,7 +154,9 @@ def rrf(rank_lists, k=60, topk=50):
 def rrf_files(chunks, rank_lists, k=60, topk=50):
     """文件级 RRF:先把每路 chunk 榜折成文件榜(取该文件最好名次),再融合——
     索引单元(chunk)和消费单元(文件)不一致时,融合必须发生在消费单元上。
-    返回 [(代表chunk_idx, score)],代表 chunk 取该文件在任一路里最靠前的那个。"""
+    返回 [(代表chunk_idx, score, per_leg_ranks)];per_leg_ranks 与 rank_lists 对齐(0起,None=该腿没投)。
+    腿名次同时是置信信号:没有任何一条腿排进前3的文件多半是凑数——
+    「分差断崖」的机制版,比分数百分比阈值诚实(RRF 分数天然贴平,光看分看不出谁在凑)。"""
     file_rank_per_list, best_chunk = [], {}
     for lst in rank_lists:
         fr = {}
@@ -166,8 +168,11 @@ def rrf_files(chunks, rank_lists, k=60, topk=50):
                     best_chunk[f] = i
         file_rank_per_list.append(fr)
     agg = {}
-    for fr in file_rank_per_list:
+    for li, fr in enumerate(file_rank_per_list):
         for f, r in fr.items():
-            agg[f] = agg.get(f, 0.0) + 1.0 / (k + r + 1)
-    ranked = sorted(agg.items(), key=lambda kv: -kv[1])[:topk]
-    return [(best_chunk[f], s) for f, s in ranked]
+            if f not in agg:
+                agg[f] = [0.0, [None] * len(rank_lists)]
+            agg[f][0] += 1.0 / (k + r + 1)
+            agg[f][1][li] = r
+    ranked = sorted(agg.items(), key=lambda kv: -kv[1][0])[:topk]
+    return [(best_chunk[f], s, legs) for f, (s, legs) in ranked]

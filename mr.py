@@ -39,7 +39,8 @@ def cmd_search(q, mode, topk, source):
     r = mr_tools.memory_search(q, mode=mode, topk=topk, source=source)
     print("[%s] tokenizer=%s %.0fms  %s" % (r["mode"], r["tokenizer"], (time.time() - t0) * 1000, r["note"]))
     for h in r["hits"]:
-        print("%2d. %.4f [%s] %s :: %s" % (h["rank"], h["score"], h["source"], h["file"], h["heading"]))
+        tag = ("  [%s]" % h["legs"]) if h.get("legs") else ""
+        print("%2d. %.4f [%s] %s :: %s%s" % (h["rank"], h["score"], h["source"], h["file"], h["heading"], tag))
         print("      %s" % h["snippet"][:120].replace("\n", " "))
 
 
