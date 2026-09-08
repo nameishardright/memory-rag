@@ -27,6 +27,9 @@ def _warm_after_list():
         _WARMED[0] = True
         try:
             mr_tools._ensure("hybrid")
+            pdf_model = os.environ.get("MR_EMBED_MODEL_PDF")
+            if pdf_model:   # source=pdf 走的模型也预热(bge-m3 加载 10-30s),不然每个会话第一次查原文页都要等
+                mr_tools._ensure("hybrid", model=pdf_model)
         except Exception as e:
             print("[warm] 预热失败,首查自己再初始化:", e, file=sys.stderr)
 
