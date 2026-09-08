@@ -73,6 +73,13 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - 🔴 为什么不逐条过滤(kb.js 那样):正确答案常常只有一条腿看见(bm25#1 + 向量未进榜),逐条 AND 会把它删掉;「cherry-pick 直合」这类罕见词问法就是 medium(bm25 16 / cos .45),删了就是误杀。真要硬拒答要上重排模型(cross-encoder 直接给 query-passage 相关分,分布分得开),这是下一项。
 - 🔴 一个假阴性:「今天天气怎么样」在语料里真的有(我自己的笔记里引用了 kb.js 的那个例子;教材里也有天气工具示例)——阴性题也会被自己的笔记污染,建阴性题要 grep 一遍语料。
 
+**第三级 cross-encoder(2026-09-08 项 7,用户「重排 go」)——结论:当重排掉分,当置信门是最强信号,默认 gate 模式**
+- 预设 `mr_index.RERANKERS`:`bge-reranker-base`(278M,1.1GB,默认)/ `bge-reranker-v2-m3`(568M,2.27GB);`pull-model bge-reranker-base` 拉。入口:进程 `MR_RERANK=<预设>`、单次 `memory_search(rerank=True/False/<预设>)`、CLI `--rerank`。`MR_RERANK_MODE=gate`(默认)只给 RRF 前 `MR_RERANK_G`=5 条打分定置信,**顺序不动**;`=rerank` 按分重排(对照用)。段落按 450 字开窗最多 3 窗取最大分(512 token 对中文≈480 字,不开窗 PDF 两条正例分 .003/.053)。
+- 🔴 当重排用两套金标全掉(GPU 标定):笔记 hybrid .835 → .692(base)/ .764(v2-m3);PDF .917 → .748 / .817。RRF 前几名本来就对,cross-encoder 只看一块前 480 字、偏爱「像答案」的段落,把对的往下压。别开 rerank 模式。
+- 当置信门用(gate 模式,阈值 hi .50 / lo .10):base——正例 18/18 + 12/12 里只有 PDF 2 条不是 high(「上下文包分区 State」.061 答案在图表里);阴性 low 8 / medium 3 / high 1(「今天天气怎么样」语料里真有)。v2-m3 更狠(阴性 low 10 / high 0)但把 4 条真正例标成 medium/low——**记忆工具里假拒绝比假放行贵**,选 base。对比两腿分数门(阴性 low 2 / medium 7 / high 3)是质变。
+- 延迟:GPU 每查 +0.5s;**CPU 每查 +3s**(9–11 对,约 300ms/对;PDF 14 对 4.4s),首次加载 5s。MCP 注册已带 `MR_RERANK=bge-reranker-base`;重模型(bge-m3 / 重排)默认**懒加载**,`MR_WARM_HEAVY=1` 才预热——用户常开 4-5 个会话,每会话一个 MCP 进程,全预热 = 每进程 3.5GB。嫌慢:`MR_RERANK_G=3` / `MR_RERANK_MAXWIN=2` 大约减半,或单次 `rerank=false`。
+- 结果字段:`rerank`={model, mode, n, pairs, top, ms},每条 hit 带 `rerank` 分;`gate` 里 `level_legs` 保留两腿的判断、`level` 以重排为准。
+
 **embedding 模型一键切换(2026-09-08)**:预设表在 `mr_index.MODELS`:`bge-small-zh-v1.5`(默认,24M,512 token,92MB)/ `bge-m3`(568M,8192 token,2.27GB,仓里只有 pytorch_model.bin)/ `Qwen3-Embedding-0.6B`(0.6B,32k token,1.19GB);短名 small / m3 / qwen3 也认,任意 HF id 或本地权重目录也能传(前缀用 `MR_EMBED_PREFIX` 给)。
 - 三个入口:进程默认 `MR_EMBED_MODEL=bge-m3`(MCP 用这个,要重启会话)/ 单次查询 `memory_search(model="bge-m3")` / CLI `--model bge-m3`(search / eval / ranks 都有)。`py -3.12 mr.py stats` 列出每个预设有没有权重、有没有缓存。
 - 🔴 每个预设**自带 query 前缀**:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 `Instruct: …\nQuery: `——换模型不换前缀会无声掉分,金标只会说"变差了"。

@@ -26,6 +26,12 @@ RELOAD_SEC = float(os.environ.get("MR_RELOAD_SEC", "5"))   # 最多每 5s 看一
 # ⚠️ 不能逐条过滤:正确答案常常只有一条腿看见(bm25#1 + 向量未进榜),逐条 AND 会把它删掉;「cherry-pick 直合」这类罕见词问法就是 medium。
 # 默认只标不删;MR_GATE=drop 时 low 清空 hits;MR_GATE=off 关。阈值:MR_MIN_BM25 / MR_MIN_BM25_PDF,余弦门在 mr_index.MODELS[*]["min_cos"](换模型要重标)。
 GATE_MODE = os.environ.get("MR_GATE", "note").lower()
+# ── 重排(项 7):MR_RERANK=<预设> 进程默认开;memory_search(rerank=) 单次 True/False/<预设>;只重排融合榜前 RERANK_N 个候选(消费单元级)。
+RERANK_MODE = os.environ.get("MR_RERANK_MODE", "gate").lower()   # gate=只定置信不动顺序(默认,标定过) | rerank=按 cross-encoder 分重排(对照用)
+RERANK_N = int(os.environ.get("MR_RERANK_N", "15"))               # rerank 模式打分的候选数
+RERANK_G = int(os.environ.get("MR_RERANK_G", "5"))                # gate 模式打分的候选数(= 返回给调用方的前几条)
+RERANK_WIN = int(os.environ.get("MR_RERANK_WIN", "450"))          # 段落开窗(字符):cross-encoder 512 token 对中文≈480 字,超出的部分模型看不见
+RERANK_MAXWIN = int(os.environ.get("MR_RERANK_MAXWIN", "3"))      # 每块最多几窗(取最大分);3 窗覆盖 1350 字≈MAX_CHUNK
 MIN_BM25 = {"notes": float(os.environ.get("MR_MIN_BM25", "8")), "pdf": float(os.environ.get("MR_MIN_BM25_PDF", "12"))}
 
 LOG_PATH = os.path.join(mr_index.CACHE, "query-log.jsonl")
@@ -109,7 +115,27 @@ def _snippet(text, query, width=300):
     return "…" + text[start:start + width]
 
 
-def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None):
+def _get_reranker(key):
+    """按预设名缓存在 _STATE["rerankers"] 里;模型懒加载,首次打分时才占内存。"""
+    spec = mr_index.reranker_spec(key if isinstance(key, str) else None)
+    if spec is None:
+        return None
+    with _LOCK:
+        rs = _STATE.setdefault("rerankers", {})
+        if spec["key"] not in rs:
+            rs[spec["key"]] = mr_index.Reranker(spec)
+        return rs[spec["key"]]
+
+
+def _windows(c):
+    """一块切成最多 RERANK_MAXWIN 个 450 字窗口,每窗都带文件名+标题;分数取窗口最大值——答案在块中后段时不至于被截掉。"""
+    head = "%s\n%s\n" % (c["file"], c["heading"])
+    body = c["text"] or ""
+    out = [head + body[s0:s0 + RERANK_WIN] for s0 in range(0, max(1, len(body)), RERANK_WIN)][:RERANK_MAXWIN]
+    return out or [head]
+
+
+def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None, rerank=None):
     """model=None 时向量腿用进程默认模型(MR_EMBED_MODEL,默认 bge-small-zh-v1.5);传预设名可单次切换,见 mr_index.MODELS。
     🔴 按源选模型(2026-09-08 用户 GPU 对照,同一 3116 块):笔记金标 small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级),
        PDF 金标 small 11/12 .694 vs bge-m3 12/12 .917——截尾的代价取决于块长和答案位置:笔记按标题分段主题在段首,PDF 一页一块答案在页中任何位置。
@@ -175,6 +201,41 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
                 gate["bm25_max"], gate["cos_max"])
         elif level == "medium":
             note = (note + ";" if note else "") + "ℹ️ 只有一条腿过线(bm25 最高 %s / 余弦最高 %s),命中可信度中等" % (gate["bm25_max"], gate["cos_max"])
+    # 重排:融合榜前 RERANK_N 个候选(已过来源过滤)交给 cross-encoder 逐对打分,按它的分重排;它的分同时改写置信等级(标定过阈值的模型才改)
+    rr = None
+    want_rr = (rerank if rerank is not None else bool(os.environ.get("MR_RERANK")))
+    if want_rr and ranked:
+        rk = _get_reranker(rerank if isinstance(rerank, str) else None)
+        if rk is None:
+            note = (note + ";" if note else "") + "重排未配置(MR_RERANK 或 rerank=<预设>)"
+        elif not rk.available:
+            note = (note + ";" if note else "") + "重排不可用(%s),按融合榜返回" % rk.err
+        else:
+            cand = [row for row in ranked if keep(row[0])][:(RERANK_N if RERANK_MODE == "rerank" else RERANK_G)]
+            t0 = time.time()
+            pairs, owner = [], []
+            for j, row in enumerate(cand):
+                for w in _windows(chunks[row[0]]):
+                    pairs.append(w)
+                    owner.append(j)
+            ws = rk.score(query, pairs)
+            scores = [max(sw for sw, o in zip(ws, owner) if o == j) for j in range(len(cand))]
+            if RERANK_MODE == "rerank":
+                order = sorted(range(len(cand)), key=lambda j: -scores[j])
+                ranked = [(cand[j][0], scores[j], (cand[j][2] if len(cand[j]) == 3 else None)) for j in order]
+            else:   # gate:顺序不动,把分挂到对应块上
+                _rr_scores = {cand[j][0]: scores[j] for j in range(len(cand))}
+            rr = {"model": rk.spec["key"], "mode": RERANK_MODE, "n": len(cand), "pairs": len(pairs), "top": round(max(scores), 3),
+                  "ms": int((time.time() - t0) * 1000)}
+            hi, lo = rk.spec.get("hi"), rk.spec.get("lo")
+            if gate is not None and hi is not None and lo is not None:
+                lvl = "high" if rr["top"] >= hi else ("medium" if rr["top"] >= lo else "low")
+                gate.update({"rerank_top": rr["top"], "rerank_hi": hi, "rerank_lo": lo, "level_legs": gate["level"], "level": lvl})
+                note = re.sub(r"(;)?(⚠️|ℹ️)[^;]*", "", note or "").strip(";")   # 两腿的置信说明作废,以重排为准
+                if lvl == "low":
+                    note = (note + ";" if note else "") + "⚠️ 重排最高分 %.2f 低于 %.2f,语料里很可能没有,别硬凑" % (rr["top"], lo)
+                elif lvl == "medium":
+                    note = (note + ";" if note else "") + "ℹ️ 重排最高分 %.2f(%.2f–%.2f),命中可信度中等" % (rr["top"], lo, hi)
     hits = []
     for row in ranked:
         i, score, legs = (row if len(row) == 3 else (row[0], row[1], None))
@@ -184,6 +245,11 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         h = {"rank": len(hits) + 1, "score": round(float(score), 4),
              "source": c["source"], "file": c["file"], "heading": c["heading"],
              "snippet": _snippet(c["text"], query)}
+        if rr is not None:
+            if rr["mode"] == "rerank":
+                h["rerank"] = round(float(score), 3)
+            elif i in _rr_scores:
+                h["rerank"] = round(float(_rr_scores[i]), 3)
         if legs is not None and leg_names:
             # 只披露机制(每条腿排第几),不下"低置信"判断——weak 旗试过一版当场撤:
             # "无腿前3=凑数"把双腿共识型正确答案(bm25#6+vec#7 靠合力赢)标成了低置信,
@@ -197,9 +263,9 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         hits = []
     _log({"tool": "search", "q": query, "mode": mode, "source": source, "model": used_model, "topk": topk, "n": len(hits),
           "top": ["%s#%s" % (h["file"], h["heading"]) for h in hits[:3]], "legs": [h.get("legs") for h in hits[:3]],
-          "confidence": confidence, "gate": gate, "note": note or None})
+          "confidence": confidence, "gate": gate, "rerank": rr, "note": note or None})
     return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "confidence": confidence,
-            "gate": gate, "note": note, "hits": hits}
+            "gate": gate, "rerank": rr, "note": note, "hits": hits}
 
 
 def memory_get(file, source=None):
@@ -253,6 +319,8 @@ REGISTRY = {
             "topk": {"type": "integer", "description": "返回条数,默认 5,上限 10"},
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf"], "description": "可选,只查某一源。默认只查 case/book/mem;要教材**原文那一页**用 source=pdf(命中的 heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
+            "rerank": {"type": "boolean", "description": "可选,是否用 cross-encoder 重排前 15 个候选(服务端 MR_RERANK 配了预设才生效;默认跟服务端);"
+                                                          "开了以后 score 是重排分(0-1),confidence 按重排分定"},
             "model": {"type": "string", "enum": list(mr_index.MODELS),
                       "description": "可选,向量腿用哪个 embedding 模型,单次切换;不传=服务端默认(MR_EMBED_MODEL,默认 bge-small-zh-v1.5;"
                                      "source=pdf 时默认走 MR_EMBED_MODEL_PDF,原文页上 bge-m3 明显更准)。"

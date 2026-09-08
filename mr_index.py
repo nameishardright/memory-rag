@@ -36,6 +36,69 @@ COMMON_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "speci
                 "modules.json", "config_sentence_transformers.json", "1_Pooling/config.json"]
 
 
+# ── 重排模型(cross-encoder,2026-09-08 项 7):query 和候选段落拼在一起过一遍模型直接出相关分,比「两条腿各自的分」分得开。
+# 只对融合榜前 RERANK_N 个候选打分(每对一次前向,CPU 上 base 约 0.1-0.2s/对),所以它是第三级,不替代召回。
+# hi / lo = 置信阈值(sigmoid 后 0-1),按 golden_negative 标定(2026-09-08:两个模型正例中位 ≥ .8、阴性中位 ≤ .05,.50/.10 两边都有余量);没标定的模型只打分不改置信。
+# 🔴 2026-09-08 标定结论:当**重排**用在两套金标上都掉分(笔记 hybrid .835→.692(base)/.764(v2-m3),PDF .917→.748/.817)——
+#    RRF 前几名已经是对的,cross-encoder 只看一个块的前 ~480 字、又偏爱「像答案」的段落,把对的文件往下压;当**置信信号**用却远比两腿分数门强。
+#    所以默认 MR_RERANK_MODE=gate(只打分定置信不动顺序),rerank 模式留作对照。
+RERANKERS = {
+    "bge-reranker-base": {"id": "BAAI/bge-reranker-base", "weights": "model.safetensors", "extra": ["sentencepiece.bpe.model"],
+                          "hi": 0.50, "lo": 0.10, "note": "278M(xlm-roberta-base),中英,1.1GB"},
+    "bge-reranker-v2-m3": {"id": "BAAI/bge-reranker-v2-m3", "weights": "model.safetensors", "extra": ["sentencepiece.bpe.model"],
+                           "hi": 0.50, "lo": 0.10, "note": "568M(bge-m3 底座),多语,2.27GB,比 base 慢约 2 倍"},
+}
+_RR_ALIASES = {"rerank-base": "bge-reranker-base", "base": "bge-reranker-base", "rerank-m3": "bge-reranker-v2-m3", "v2-m3": "bge-reranker-v2-m3"}
+RERANKER_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]
+
+
+def reranker_spec(key=None):
+    key = (key or os.environ.get("MR_RERANK") or "").strip()
+    if not key:
+        return None
+    k = _RR_ALIASES.get(key.lower(), key)
+    hit = next((n for n in RERANKERS if n.lower() == k.lower()), None)
+    if hit:
+        spec = dict(RERANKERS[hit], key=hit, local=os.path.join(MODELS_DIR, hit))
+    elif os.path.isdir(key):
+        name = os.path.basename(os.path.normpath(key))
+        spec = {"key": name, "id": name, "local": key, "weights": "model.safetensors", "extra": [], "hi": None, "lo": None, "note": "本地目录"}
+    else:
+        name = key.split("/")[-1]
+        spec = {"key": name, "id": key, "local": os.path.join(MODELS_DIR, name), "weights": "model.safetensors", "extra": [], "hi": None, "lo": None, "note": "自定义"}
+    spec["files"] = RERANKER_FILES + list(spec.get("extra", [])) + [spec["weights"]]
+    return spec
+
+
+class Reranker:
+    """cross-encoder 打分器:score(query, passages) → [0-1]。权重缺失/依赖缺失 available=False,上层跳过重排并在 note 里说明。"""
+
+    def __init__(self, spec):
+        self.spec, self.available, self.err, self._model = spec, False, "", None
+        if not has_weights(spec) and not os.environ.get("MR_EMBED_ALLOW_DOWNLOAD"):
+            self.err = "重排模型 %s 没有本地权重(%s),先跑: py -3.12 mr.py pull-model %s" % (spec["key"], spec["local"], spec["key"])
+            return
+        try:
+            from sentence_transformers import CrossEncoder  # noqa: F401
+            self.available = True
+        except ImportError as e:
+            self.err = "依赖未装(%s),先跑: py -3.12 mr.py setup-vec" % e.name
+
+    def _get(self):
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+            self._model = CrossEncoder(model_path(self.spec), max_length=512)
+        return self._model
+
+    def score(self, query, passages, batch_size=16):
+        import numpy as np
+        out = self._get().predict([(query, p) for p in passages], batch_size=batch_size, show_progress_bar=False)
+        out = np.asarray(out, dtype=float).reshape(-1)
+        if out.size and (out.min() < 0 or out.max() > 1):   # 有的版本回 logit,统一成 0-1
+            out = 1.0 / (1.0 + np.exp(-out))
+        return [float(x) for x in out]
+
+
 def model_spec(key=None):
     """预设名 / 短名 / 任意 HF id / 本地目录 → {key, id, local, prefix, weights, extra, slug}。
     没权重不在这里报错,留给 VecIndex 降级(hybrid 退 bm25 并在 note 里说明)。"""

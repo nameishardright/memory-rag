@@ -5,7 +5,8 @@
   py -3.12 mr.py eval [--mode all|bm25|vec|hybrid] [-v] [--model bge-m3]   # 金标评测:recall@5 / MRR@10 / 延迟
   py -3.12 mr.py eval --golden golden/golden_negative.json -v   # 阴性对照:无答案问题的拦截率(拒答门 MR_GATE=note|drop|off)
   py -3.12 mr.py setup-vec                      # 装向量依赖(清华镜像)+预拉默认模型
-  py -3.12 mr.py pull-model bge-m3              # 从 hf-mirror 拉某个预设模型的权重到 .cache/<名>/(可断点续传)
+  py -3.12 mr.py pull-model bge-m3              # 从 hf-mirror 拉某个预设模型的权重到 .cache/<名>/(可断点续传);重排模型同理 pull-model bge-reranker-base
+  py -3.12 mr.py eval --rerank bge-reranker-base   # 第三级重排(cross-encoder)对照;进程默认用 MR_RERANK=<预设>
   py -3.12 mr.py log [--days 7] [--src mcp]     # 查询日志汇总:0 命中的问题 + search→get 隐式正标签挖成金标候选
   embedding 模型一键切换:--model(单次)/ 环境变量 MR_EMBED_MODEL(进程默认,MCP 用这个)/ memory_search(model=)(单次查询)
 """
@@ -42,6 +43,12 @@ def cmd_stats():
     pdf_m = os.environ.get("MR_EMBED_MODEL_PDF")
     print("embedding 模型(默认=%s,MR_EMBED_MODEL 可改;source=pdf 走 %s;* = 当前默认):" % (
         cur["key"], mr_index.model_spec(pdf_m)["key"] if pdf_m else "默认(MR_EMBED_MODEL_PDF 可改,推荐 bge-m3)"))
+    cur_rr = os.environ.get("MR_RERANK")
+    print("重排模型(MR_RERANK=%s,MR_RERANK_MODE=%s):" % (cur_rr or "关", mr_tools.RERANK_MODE))
+    for name in mr_index.RERANKERS:
+        sp = mr_index.reranker_spec(name)
+        print("  %s%-22s 权重:%s  %s" % ("*" if cur_rr and mr_index.reranker_spec(cur_rr)["key"] == name else " ", name,
+              "有" if mr_index.has_weights(sp) else "无(pull-model %s)" % name, sp["note"]))
     for name in mr_index.MODELS:
         sp = mr_index.model_spec(name)
         emb = os.path.join(mr_index.CACHE, "emb-%s.npy" % sp["slug"])
@@ -50,26 +57,28 @@ def cmd_stats():
               "有" if os.path.exists(emb) else "无", sp["note"]))
 
 
-def cmd_search(q, mode, topk, source, model=None):
+def cmd_search(q, mode, topk, source, model=None, rerank=None):
     t0 = time.time()
-    r = mr_tools.memory_search(q, mode=mode, topk=topk, source=source, model=model)
-    print("[%s] tokenizer=%s model=%s %.0fms  %s" % (r["mode"], r["tokenizer"], r.get("model") or "-", (time.time() - t0) * 1000, r["note"]))
+    r = mr_tools.memory_search(q, mode=mode, topk=topk, source=source, model=model, rerank=rerank)
+    print("[%s] tokenizer=%s model=%s rerank=%s conf=%s %.0fms  %s" % (r["mode"], r["tokenizer"], r.get("model") or "-",
+          (r.get("rerank") or {}).get("model", "-"), r.get("confidence"), (time.time() - t0) * 1000, r["note"]))
     for h in r["hits"]:
         tag = ("  [%s]" % h["legs"]) if h.get("legs") else ""
         print("%2d. %.4f [%s] %s :: %s%s" % (h["rank"], h["score"], h["source"], h["file"], h["heading"], tag))
         print("      %s" % h["snippet"][:120].replace("\n", " "))
 
 
-def cmd_eval(mode, verbose, golden_path=None, model=None):
+def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
     mr_tools.LOG_ON = False   # 金标几百条别淹掉真实查询日志
+    rr_name = (mr_index.reranker_spec(rerank if isinstance(rerank, str) else None) or {}).get("key") if (rerank or os.environ.get("MR_RERANK")) else None
     with open(golden_path or os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
         golden = json.load(f)
     qs = golden["queries"]
     modes = ["bm25", "vec", "hybrid"] if mode == "all" else [mode]
     negative = bool(golden.get("negative"))
     if negative:
-        print("阴性金标 %d 条 | 模型 %s | 三级置信分布,理想 = low 多 high 少(MR_GATE=%s)" % (
-            len(qs), mr_index.model_spec(model)["key"], mr_tools.GATE_MODE))
+        print("阴性金标 %d 条 | 模型 %s | 重排 %s | 三级置信分布,理想 = low 多 high 少(MR_GATE=%s)" % (
+            len(qs), mr_index.model_spec(model)["key"], rr_name or "-", mr_tools.GATE_MODE))
         for m in modes:
             probe = mr_tools.memory_search("探针", mode=m, topk=1, model=model)
             if probe["mode"].endswith("(fallback)") and m != "bm25":
@@ -77,7 +86,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
                 continue
             dist, leaks = {"low": 0, "medium": 0, "high": 0}, []
             for g in qs:
-                r = mr_tools.memory_search(g["q"], mode=m, topk=5, source=golden.get("source") or g.get("source"), model=model)
+                r = mr_tools.memory_search(g["q"], mode=m, topk=5, source=golden.get("source") or g.get("source"), model=model, rerank=rerank)
                 lv = "low" if not r["hits"] else r.get("confidence", "high")
                 dist[lv] += 1
                 if lv == "high":
@@ -85,10 +94,10 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
             print("%-8s low %2d / medium %2d / high %2d  (共 %d)" % (m, dist["low"], dist["medium"], dist["high"], len(qs)))
             if verbose:
                 for q, f, gate in leaks:
-                    print("    标成 high: %s -> %s  bm25 %s cos %s" % (q, f, gate["bm25_max"], gate["cos_max"]))
+                    print("    标成 high: %s -> %s  bm25 %s cos %s rerank %s" % (q, f, gate["bm25_max"], gate["cos_max"], gate.get("rerank_top")))
         return
-    print("金标 %d 条(draft=%s) | 模型 %s | recall@5=前5含期望文件 | MRR@10=首个命中名次倒数均值" % (
-        len(qs), golden.get("draft"), mr_index.model_spec(model)["key"]))
+    print("金标 %d 条(draft=%s) | 模型 %s | 重排 %s | recall@5=前5含期望文件 | MRR@10=首个命中名次倒数均值" % (
+        len(qs), golden.get("draft"), mr_index.model_spec(model)["key"], ("%s(%s)" % (rr_name, mr_tools.RERANK_MODE)) if rr_name else "-"))
     print("%-8s %-9s %-7s %s" % ("mode", "recall@5", "MRR@10", "avg延迟"))
     for m in modes:
         probe = mr_tools.memory_search("探针", mode=m, topk=1, model=model)
@@ -97,7 +106,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
             continue
         hit5, rr, t0, misses, flagged = 0, 0.0, time.time(), [], []
         for g in qs:
-            r = mr_tools.memory_search(g["q"], mode=m, topk=10, source=golden.get("source") or g.get("source"), model=model)
+            r = mr_tools.memory_search(g["q"], mode=m, topk=10, source=golden.get("source") or g.get("source"), model=model, rerank=rerank)
             files, seen = [], set()
             for h in r["hits"]:
                 # 有 expect_pages 时按「文件#页」去重(同一本 PDF 不同页各算一条),否则按文件
@@ -127,7 +136,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
                                                   ("   ⚠️ 正例不是 high 的 %d" % len(flagged)) if flagged else ""))
         if verbose and flagged:
             for q, lv, gate in flagged:
-                print("    %s: %s  bm25 %s cos %s" % (lv, q, gate["bm25_max"], gate["cos_max"]))
+                print("    %s: %s  bm25 %s cos %s rerank %s" % (lv, q, gate["bm25_max"], gate["cos_max"], gate.get("rerank_top")))
         if verbose and misses:
             for q, top in misses:
                 print("    miss: %s -> 实际top3=%s" % (q, top))
@@ -241,11 +250,13 @@ def cmd_pull_model(name):
     """从 HF 镜像把预设模型的权重和配置拉到 .cache/<名>/。断点续传(curl -C -),已完整的文件跳过。
     🔴 镜像对不存在的文件回 15 字节的 "Entry not found" 而不是 404 报错——不查的话会留下一个假权重文件,
        之后 sentence-transformers 报的错跟"没权重"完全不像(2026-09-08 bge-m3 踩过:它仓里只有 pytorch_model.bin)。"""
-    sp = mr_index.model_spec(name)
+    rr = mr_index.reranker_spec(name) if (name.lower() in {k.lower() for k in mr_index.RERANKERS} or name.lower() in mr_index._RR_ALIASES) else None
+    sp = rr or mr_index.model_spec(name)
     base = "%s/%s/resolve/main/" % (os.environ.get("HF_ENDPOINT", "https://hf-mirror.com").rstrip("/"), sp["id"])
     os.makedirs(os.path.join(sp["local"], "1_Pooling"), exist_ok=True)
     print("拉 %s → %s" % (sp["id"], sp["local"]))
-    for f in mr_index.COMMON_FILES + list(sp.get("extra", [])) + [sp["weights"]]:
+    files = sp["files"] if rr else (mr_index.COMMON_FILES + list(sp.get("extra", [])) + [sp["weights"]])
+    for f in files:
         dst = os.path.join(sp["local"], f)
         if os.path.isfile(dst) and os.path.getsize(dst) > 32 and f != sp["weights"]:
             continue
@@ -262,7 +273,10 @@ def cmd_pull_model(name):
         else:
             print("  ✓ %-32s %8.1f MB" % (f, size / 1048576))
     ok = mr_index.has_weights(sp)
-    print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npy)" % ("就绪" if ok else "缺失", sp["slug"]))
+    if rr:
+        print("重排权重 %s;用法:MR_RERANK=%s 或 --rerank %s" % ("就绪" if ok else "缺失", sp["key"], sp["key"]))
+    else:
+        print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npy)" % ("就绪" if ok else "缺失", sp["slug"]))
     return ok
 
 
@@ -277,11 +291,13 @@ if __name__ == "__main__":
     p.add_argument("--source", default=None, choices=["case", "book", "mem", "pdf"])
     p.add_argument("--include-pdf", action="store_true")
     p.add_argument("--model", default=None, help="embedding 模型预设名(bge-small-zh-v1.5 / bge-m3 / Qwen3-Embedding-0.6B 或短名 small/m3/qwen3)")
+    p.add_argument("--rerank", default=None, help="重排预设名(bge-reranker-base / bge-reranker-v2-m3 或短名 base/v2-m3);不传跟 MR_RERANK")
     p = sub.add_parser("eval")
     p.add_argument("--mode", default="all", choices=["all", "bm25", "vec", "hybrid"])
     p.add_argument("-v", action="store_true")
     p.add_argument("--golden", default=None, help="金标文件,默认 golden/golden_queries.json;PDF 源用 golden/golden_pdf.json")
     p.add_argument("--model", default=None, help="同 search --model;只影响 vec/hybrid 两行")
+    p.add_argument("--rerank", default=None, help="同 search --rerank")
     p = sub.add_parser("log")            # 查询日志汇总 + 金标候选(search→get 隐式正标签)
     p.add_argument("--days", type=int, default=7)
     p.add_argument("--src", default="mcp", choices=["mcp", "cli", "all"])
@@ -297,9 +313,9 @@ if __name__ == "__main__":
     if a.cmd == "stats":
         cmd_stats()
     elif a.cmd == "search":
-        cmd_search(a.query, a.mode, a.topk, a.source, a.model)
+        cmd_search(a.query, a.mode, a.topk, a.source, a.model, a.rerank)
     elif a.cmd == "eval":
-        cmd_eval(a.mode, a.v, a.golden, a.model)
+        cmd_eval(a.mode, a.v, a.golden, a.model, a.rerank)
     elif a.cmd == "log":
         cmd_log(a.days, a.src)
     elif a.cmd == "pull-model":

@@ -28,9 +28,16 @@ def _warm_after_list():
         _WARMED[0] = True
         try:
             mr_tools._ensure("hybrid")
-            pdf_model = os.environ.get("MR_EMBED_MODEL_PDF")
-            if pdf_model:   # source=pdf 走的模型也预热(bge-m3 加载 10-30s),不然每个会话第一次查原文页都要等
-                mr_tools._ensure("hybrid", model=pdf_model)
+            # 重模型(bge-m3 2.3GB / 重排 1.1GB)默认**懒加载**,首次用到才装:用户常开 4-5 个 CC 会话,每个会话一个 MCP 进程,
+            # 全预热 = 每进程 3.5GB × 5。MR_WARM_HEAVY=1 才预热(单会话机器可开)。代价是第一次查原文页/第一次重排多等 5-30s。
+            if os.environ.get("MR_WARM_HEAVY"):
+                pdf_model = os.environ.get("MR_EMBED_MODEL_PDF")
+                if pdf_model:
+                    mr_tools._ensure("hybrid", model=pdf_model)
+                if os.environ.get("MR_RERANK"):
+                    rk = mr_tools._get_reranker(None)
+                    if rk and rk.available:
+                        rk.score("预热", ["预热"])
         except Exception as e:
             print("[warm] 预热失败,首查自己再初始化:", e, file=sys.stderr)
 
