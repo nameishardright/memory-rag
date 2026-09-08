@@ -156,11 +156,11 @@ def cmd_pull_model(name):
     print("拉 %s → %s" % (sp["id"], sp["local"]))
     for f in mr_index.COMMON_FILES + list(sp.get("extra", [])) + [sp["weights"]]:
         dst = os.path.join(sp["local"], f)
-        if os.path.isfile(dst) and os.path.getsize(dst) > 64 and f != sp["weights"]:
+        if os.path.isfile(dst) and os.path.getsize(dst) > 32 and f != sp["weights"]:
             continue
         rc = subprocess.call(["curl", "-sL", "-C", "-", "--retry", "3", "--retry-delay", "5", "-o", dst, base + f])
         size = os.path.getsize(dst) if os.path.isfile(dst) else -1
-        if 0 <= size < 64 and b"not found" in open(dst, "rb").read():
+        if 0 <= size < 32 and b"not found" in open(dst, "rb").read():
             os.remove(dst)
             size = -1
         if size < 0:

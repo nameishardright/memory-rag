@@ -114,7 +114,7 @@ class BM25:
         cache = BM25._TOK_CACHE
         self.docs = []
         for c in chunks:
-            key = c["md5"] + "|" + c["file"] + "|" + c["heading"]   # _index_text 含文件名+标题,同正文不同标题分词不同
+            key = c["md5"]   # md5 已含文件名+标题+正文(mr_corpus.chunk_key),就是 _index_text 的指纹
             if key not in cache:
                 cache[key] = tokenize(_index_text(c))
             self.docs.append(cache[key])
@@ -149,6 +149,9 @@ class BM25:
         return [(i, scores[i]) for i in order if scores[i] > 0]
 
 
+CACHE_VER = 2   # 改 _index_text / chunk_key / 分块规则时 +1:老缓存整体作废重算,而不是新旧键混在一个文件里越攒越大(v2 = 键含文件名+标题)
+
+
 class VecIndex:
     """embedding 按 chunk md5 缓存(.cache/emb-<模型>.npy):语料改一块只重算一块;缓存按模型分文件,切换模型不互相冲掉。"""
 
@@ -180,7 +183,7 @@ class VecIndex:
                     with open(meta_p, encoding="utf-8") as f:
                         m = json.load(f)
                     arr = np.load(emb_p)
-                    if m.get("model") == self.spec["id"] and len(m.get("md5s", [])) == len(arr):
+                    if m.get("model") == self.spec["id"] and m.get("ver") == CACHE_VER and len(m.get("md5s", [])) == len(arr):
                         old = {h: arr[i] for i, h in enumerate(m["md5s"])}
                 except Exception:
                     old = {}
@@ -195,7 +198,7 @@ class VecIndex:
             # 缓存存「见过的全部」而不是「当前这批」:MR_PDF 开关来回切、或某源临时缺目录时,不用把 1100 页重算一遍
             keys = list(old.keys())
             with open(meta_p, "w", encoding="utf-8") as f:
-                json.dump({"model": self.spec["id"], "md5s": keys}, f)
+                json.dump({"model": self.spec["id"], "ver": CACHE_VER, "md5s": keys}, f)
             np.save(emb_p, np.stack([old[k] for k in keys]))
             self.available = True
         except Exception as e:                      # 模型加载失败/磁盘问题等,都降级不炸
@@ -253,7 +256,9 @@ def rrf_files(chunks, rank_lists, k=60, topk=50, unit="file"):
     腿名次同时是置信信号:没有任何一条腿排进前3的文件多半是凑数——
     「分差断崖」的机制版,比分数百分比阈值诚实(RRF 分数天然贴平,光看分看不出谁在凑)。"""
     # unit="page":PDF 源用,消费单元是「文件#页」而不是文件——一本书 700 页,按文件折叠就永远只出一页
-    key_of = (lambda c: c["file"] + "#" + c["heading"].split(" (")[0]) if unit == "page" else (lambda c: c["file"])
+    # 文档身份 = 源/文件名:三个语料目录各自独立,同名文件是两份文档,只按文件名折叠会把它们的票合并(2026-09-08 评审项④;当时跨源同名 0 个,潜伏)
+    doc = lambda c: c["source"] + "/" + c["file"]   # noqa: E731
+    key_of = (lambda c: doc(c) + "#" + c["heading"].split(" (")[0]) if unit == "page" else doc
     file_rank_per_list, best_chunk = [], {}
     for lst in rank_lists:
         fr = {}

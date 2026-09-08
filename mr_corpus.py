@@ -86,7 +86,7 @@ def load_pdf_chunks():
                 chunks.append({
                     "id": hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12],
                     "source": "pdf", "file": fn, "heading": h, "text": body,
-                    "md5": hashlib.md5(body.encode()).hexdigest(),
+                    "md5": chunk_key(fn, h, body),
                 })
     return chunks
 
@@ -111,6 +111,13 @@ def signature():
             parts.append("pdf|%s|%d|%d" % (os.path.basename(p), int(st.st_mtime), st.st_size))
     return hashlib.md5("\n".join(parts).encode()).hexdigest()
 MAX_CHUNK = 1500              # 字符;标题块超长再硬切
+
+
+def chunk_key(fn, heading, body):
+    """chunk 的缓存键(分词缓存 / embedding 缓存都用它)。
+    🔴 必须哈希「真正被索引的文本」= 文件名+标题+正文(见 mr_index._index_text),不能只哈希正文:
+       只哈希正文时,改标题/改文件名不会触发重算,向量里编码的还是旧标题(2026-09-08 外部评审指出,当时暴露面 1 组:两篇笔记里同一段文字)。"""
+    return hashlib.md5(("%s\n%s\n%s" % (fn, heading, body)).encode()).hexdigest()
 OVERLAP = 150
 
 # 凭据脱敏:值抹掉、键留着——搜"哪里有key"仍可命中,但值不进索引/不出工具
@@ -169,7 +176,7 @@ def load_chunks():
                 chunks.append({
                     "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
                     "source": src["key"], "file": fn, "heading": head, "text": body,
-                    "md5": hashlib.md5(body.encode()).hexdigest(),
+                    "md5": chunk_key(fn, head, body),
                 })
     if pdf_enabled():
         chunks.extend(load_pdf_chunks())
