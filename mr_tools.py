@@ -15,6 +15,36 @@ _STATE = {}
 _LOCK = threading.Lock()   # MCP server 启动预热线程和首个查询会并发进来,不锁会撞半成品状态
 RELOAD_SEC = float(os.environ.get("MR_RELOAD_SEC", "5"))   # 最多每 5s 看一次语料指纹(stat ~150 个文件,毫秒级)
 
+# ── 观测留痕(2026-09-08,《指南》p70-71「可溯源 + 观测」;HA ch8 笔记「对照」第 4 条):每次 search / get 追加一行 jsonl ──
+# 用途:①挖金标——一次 search 后 2 分钟内 get 了某个命中文件 = 隐式正标签;②0 命中的真实问题 = 语料缺口或阴性题候选。
+# 日志在 .cache/(gitignore),MR_LOG=0 关;CLI 的 eval/ranks 不记(几百条金标会淹掉真实查询),search 记为 src=cli,MCP 记为 src=mcp。
+# ── 拒答门(2026-09-08,《指南》p70-71「证据不足要有保守策略」;观澜 kb.js 同款思路,但这里是**查询级三级置信**不是逐条删):
+# 两条腿各取最高分和各自门槛比:两腿都过 = high,一条过 = medium,都没过 = low(语料里很可能没有)。
+# 为什么不能像 kb.js 那样一刀切拒答:个人语料 1800 块题材杂,无答案的问题靠「今天/怎么/为什么」BM25 也能到 19、靠语义近邻余弦也能到 .60,
+# 分差断崖(top1/top5、cos 领先幅度)也分不开(2026-09-08 标定 3)。能量出来的只有:正例 30/30 都是 high;阴性 12 条里 low 2–3、medium 6–7、high 3
+# (high 的三条「量子计算 / agent 发音 / 英语时态」本来就贴着语料题材)。所以它是**证据强度标签**,拒答判断留给读结果的模型;真要硬拒答得上重排模型。
+# ⚠️ 不能逐条过滤:正确答案常常只有一条腿看见(bm25#1 + 向量未进榜),逐条 AND 会把它删掉;「cherry-pick 直合」这类罕见词问法就是 medium。
+# 默认只标不删;MR_GATE=drop 时 low 清空 hits;MR_GATE=off 关。阈值:MR_MIN_BM25 / MR_MIN_BM25_PDF,余弦门在 mr_index.MODELS[*]["min_cos"](换模型要重标)。
+GATE_MODE = os.environ.get("MR_GATE", "note").lower()
+MIN_BM25 = {"notes": float(os.environ.get("MR_MIN_BM25", "8")), "pdf": float(os.environ.get("MR_MIN_BM25_PDF", "12"))}
+
+LOG_PATH = os.path.join(mr_index.CACHE, "query-log.jsonl")
+LOG_ON = os.environ.get("MR_LOG", "1").lower() not in ("0", "false", "no")
+LOG_SRC = "cli"
+
+
+def _log(rec):
+    if not LOG_ON:
+        return
+    try:
+        import json
+        rec = dict(rec, ts=time.strftime("%Y-%m-%dT%H:%M:%S"), src=LOG_SRC)
+        os.makedirs(mr_index.CACHE, exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass   # 日志永远不能让查询失败
+
 
 class _SubBM25:
     """在一个子集上建 BM25,对外返回全局下标。为什么要分开建:BM25 的 IDF / 平均长度是语料级统计,
@@ -111,7 +141,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         bm_index = st["bm25"]
     K = 50
     bm = bm_index.search(query, topk=K, mask=mask) if bm_index else []
-    leg_names = None
+    leg_names, vl = None, None
     if mode == "bm25":
         ranked = bm
     else:
@@ -120,14 +150,31 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             ranked, note = bm, "向量层不可用(%s),已回退 bm25" % getattr(v, "err", "")
             mode = "bm25(fallback)"
         elif mode == "vec":
-            ranked, used_model = v.search(query, topk=K, mask=mask), spec["key"]
+            vl = v.search(query, topk=K, mask=mask)
+            ranked, used_model = vl, spec["key"]
         else:
             used_model = spec["key"]
-            ranked = mr_index.rrf_files(chunks, [bm, v.search(query, topk=K, mask=mask)],
-                                        unit=("page" if allowed == {"pdf"} else "file"))
+            vl = v.search(query, topk=K, mask=mask)
+            ranked = mr_index.rrf_files(chunks, [bm, vl], unit=("page" if allowed == {"pdf"} else "file"))
             leg_names = ("bm25", "vec")
     if source == "pdf" and not any(c["source"] == "pdf" for c in chunks):
         note = "PDF 源没装载:服务端要 MR_PDF=1 起(先 py -3.12 mr.py pdf-extract 抽一次文本)"
+    # 查询级拒答门:两条腿的最高分都低于门槛 → 语料里很可能没有
+    gate = None
+    if GATE_MODE != "off":
+        bm_max = max((s_ for _, s_ in bm), default=0.0) if mode != "vec" else None
+        cos_max = max((s_ for _, s_ in vl), default=0.0) if vl is not None else None
+        min_bm, min_cos = MIN_BM25["pdf" if allowed == {"pdf"} else "notes"], spec.get("min_cos")
+        checks = [c for c in ((bm_max >= min_bm) if bm_max is not None else None,
+                              (cos_max >= min_cos) if (cos_max is not None and min_cos is not None) else None) if c is not None]
+        level = "high" if checks and all(checks) else ("low" if checks and not any(checks) else ("medium" if checks else "high"))
+        gate = {"bm25_max": round(bm_max, 2) if bm_max is not None else None, "cos_max": round(cos_max, 3) if cos_max is not None else None,
+                "min_bm25": min_bm, "min_cos": min_cos, "level": level}
+        if level == "low":
+            note = (note + ";" if note else "") + "⚠️ 两条腿都低于门槛(bm25 最高 %s / 余弦最高 %s),语料里很可能没有,别硬凑" % (
+                gate["bm25_max"], gate["cos_max"])
+        elif level == "medium":
+            note = (note + ";" if note else "") + "ℹ️ 只有一条腿过线(bm25 最高 %s / 余弦最高 %s),命中可信度中等" % (gate["bm25_max"], gate["cos_max"])
     hits = []
     for row in ranked:
         i, score, legs = (row if len(row) == 3 else (row[0], row[1], None))
@@ -145,10 +192,23 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         hits.append(h)
         if len(hits) >= topk:
             break
-    return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "note": note, "hits": hits}
+    confidence = gate["level"] if gate else "high"
+    if confidence == "low" and GATE_MODE == "drop":
+        hits = []
+    _log({"tool": "search", "q": query, "mode": mode, "source": source, "model": used_model, "topk": topk, "n": len(hits),
+          "top": ["%s#%s" % (h["file"], h["heading"]) for h in hits[:3]], "legs": [h.get("legs") for h in hits[:3]],
+          "confidence": confidence, "gate": gate, "note": note or None})
+    return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "confidence": confidence,
+            "gate": gate, "note": note, "hits": hits}
 
 
 def memory_get(file, source=None):
+    r = _memory_get(file, source)
+    _log({"tool": "get", "file": os.path.basename(file), "source": r.get("source") or source, "ok": r.get("ok")})
+    return r
+
+
+def _memory_get(file, source=None):
     # PDF 原文:file 形如「Agentic-AI指南.pdf#p81」→ 回那一页 ±1 页(页码 Acrobat 1-indexed);缓存没建就现抽(首次几分钟)
     m = re.match(r"^(.+?\.pdf)(?:#p(\d+))?$", os.path.basename(file), re.I)
     if m:
@@ -180,7 +240,8 @@ REGISTRY = {
         "fn": memory_search,
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
-                "mem(个人长期记忆);要教材原文页时 source=pdf(按页返回,笔记答「哪一章」更准,原文答「书上原话怎么说」)。查不到返回空 hits,也是正常结果。hybrid 模式每条带 legs(词法/语义两腿"
+                "mem(个人长期记忆);要教材原文页时 source=pdf(按页返回,笔记答「哪一章」更准,原文答「书上原话怎么说」)。查不到返回空 hits,也是正常结果;"
+                "confidence 是证据强度:high=词法和语义两条腿都过线;medium=只有一条腿过线(罕见词/英文问法常见,看 legs 自己判);low=两条腿都没过,语料里很可能没有,hits 只是最不差的凑数,别当依据。hybrid 模式每条带 legs(词法/语义两腿"
                 "各排第几,双腿都靠前=共识强);snippet 已对准命中词。引用前用 memory_get 看全文。"
                 "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
                 "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"

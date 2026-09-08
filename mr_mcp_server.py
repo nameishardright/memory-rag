@@ -20,6 +20,7 @@ import mr_tools  # noqa: E402
 # 时机=答完 tools/list 之后(initialize/tools/list 是连接秒发的,必须秒回;tools/call
 # 通常几分钟后才来)。预热期间来的消息在管道里排队,最坏等个尾巴,通常等于免费。
 _WARMED = [False]
+mr_tools.LOG_SRC = "mcp"   # 查询日志里区分真实会话查询和 CLI 手工查询
 
 
 def _warm_after_list():

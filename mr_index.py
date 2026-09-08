@@ -17,16 +17,17 @@ MODELS_DIR = os.environ.get("MR_MODELS_DIR") or CACHE                    # 模�
 # 🔴 每个预设自带 query 前缀:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 Instruct 格式——
 #    换模型不换前缀会无声掉分,金标只会告诉你"变差了"不会告诉你为什么。
 # 权重放 .cache/<名>/(gitignore),`py -3.12 mr.py pull-model <名>` 从 hf-mirror 拉;embedding 缓存按模型分文件,切回来不重算。
+# min_cos = 拒答门的余弦阈值(查询级,看向量腿最高分;和 BM25 阈值一起用,见 mr_tools.memory_search),按 golden_negative.json 标定,换模型要重标。
 MODELS = {
     "bge-small-zh-v1.5": {"id": "BAAI/bge-small-zh-v1.5", "prefix": "为这个句子生成表示以用于检索相关文章：",
-                          "weights": "model.safetensors", "extra": ["vocab.txt", "sentence_bert_config.json"],
+                          "weights": "model.safetensors", "extra": ["vocab.txt", "sentence_bert_config.json"], "min_cos": 0.48,
                           "note": "24M 参数,512 token,92MB,CPU 毫秒级;语料 40% 块超限被截尾"},
     "bge-m3": {"id": "BAAI/bge-m3", "prefix": "", "weights": "pytorch_model.bin",   # 仓里没有 safetensors
-               "extra": ["sentencepiece.bpe.model", "sentence_bert_config.json"],
+               "extra": ["sentencepiece.bpe.model", "sentence_bert_config.json"], "min_cos": 0.52,
                "note": "568M 参数,8192 token,2.27GB;查询不加指令"},
     "Qwen3-Embedding-0.6B": {"id": "Qwen/Qwen3-Embedding-0.6B", "weights": "model.safetensors",
                              "prefix": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
-                             "extra": ["merges.txt", "vocab.json"],
+                             "extra": ["merges.txt", "vocab.json"], "min_cos": None,   # 没标定过,余弦门不启用
                              "note": "0.6B 参数,32k token,1.19GB;查询要 Instruct 前缀"},
 }
 _ALIASES = {"small": "bge-small-zh-v1.5", "m3": "bge-m3", "qwen3": "Qwen3-Embedding-0.6B", "qwen3-0.6b": "Qwen3-Embedding-0.6B"}

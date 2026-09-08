@@ -66,6 +66,13 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - 数字(`golden/golden_pdf.json` 12 条,问法换说法、页码区间按笔记 ⭐ 页 ±2 反查核过):bm25 11/12 MRR .830 · vec 10/12 .628 · hybrid 11/12 .694 —— **原文页上 bm25 比 hybrid 强**(页块长、内容杂,向量腿拖后腿),12 条不够下调权的结论,先记着。MR_PDF=0 时 0/12(理应)。
 - 定位:笔记答「对应哪一章」(带页码指针),原文答「书上原话怎么说」。让 rh-memory MCP 带上 PDF:`claude mcp remove -s user rh-memory && claude mcp add -s user -e MR_PDF=1 rh-memory -- py -3.12 <path>\mr_mcp_server.py`(要重启会话才换新进程)。
 
+**观测留痕 + 金标候选(2026-09-08,HA ch8 笔记「对照」第 4 条 / 《指南》p70-71)**:每次 `memory_search` / `memory_get` 追加一行到 `.cache/query-log.jsonl`(gitignore;`MR_LOG=0` 关;eval/ranks 不记;MCP 记 `src=mcp`,CLI 记 `src=cli`)。`py -3.12 mr.py log [--days 7] [--src mcp]` 汇总:0 命中的真实问题(语料缺口或阴性题候选)、**search 后 120s 内 get 了命中文件 = 隐式正标签**,直接打成 `{"q","expect"}` 供挑进 golden。金标从 18/12 往 50+ 涨靠这个,不靠手编。
+
+**三级置信 / 拒答门(2026-09-08,自测题 6 / 《指南》p70-71;观澜 kb.js 的门搬过来时改成了查询级)**:结果多两个字段 `confidence`(high / medium / low)和 `gate`(两腿最高分 + 门槛)。两条腿各取最高分:BM25 ≥ 8(笔记)/ 12(PDF,`MR_MIN_BM25*`)、余弦 ≥ `MODELS[*]["min_cos"]`(small .48 / bge-m3 .52,Qwen3 没标定不启用),两腿都过 = high,一条 = medium(note 说明),都没过 = low(note 明说「语料里很可能没有」;`MR_GATE=drop` 才清空 hits,默认 note)。
+- 标定数据(`golden/golden_negative.json` 12 条无答案问题,故意混「今天/怎么/为什么/agent」):正例 18 + 12 条全部 high;阴性 low 2 / medium 7 / high 3。**分数门在个人通用语料上只能标不能拒**:无答案的问题靠常见词 BM25 也能到 19、靠语义近邻余弦也能到 .60,分差断崖(top1/top5、余弦领先幅度)也分不开;标成 high 的三条(量子计算 / agent 发音 / 英语时态)本来就贴着语料题材。kb.js 能一刀切是因为它语料小而专。
+- 🔴 为什么不逐条过滤(kb.js 那样):正确答案常常只有一条腿看见(bm25#1 + 向量未进榜),逐条 AND 会把它删掉;「cherry-pick 直合」这类罕见词问法就是 medium(bm25 16 / cos .45),删了就是误杀。真要硬拒答要上重排模型(cross-encoder 直接给 query-passage 相关分,分布分得开),这是下一项。
+- 🔴 一个假阴性:「今天天气怎么样」在语料里真的有(我自己的笔记里引用了 kb.js 的那个例子;教材里也有天气工具示例)——阴性题也会被自己的笔记污染,建阴性题要 grep 一遍语料。
+
 **embedding 模型一键切换(2026-09-08)**:预设表在 `mr_index.MODELS`:`bge-small-zh-v1.5`(默认,24M,512 token,92MB)/ `bge-m3`(568M,8192 token,2.27GB,仓里只有 pytorch_model.bin)/ `Qwen3-Embedding-0.6B`(0.6B,32k token,1.19GB);短名 small / m3 / qwen3 也认,任意 HF id 或本地权重目录也能传(前缀用 `MR_EMBED_PREFIX` 给)。
 - 三个入口:进程默认 `MR_EMBED_MODEL=bge-m3`(MCP 用这个,要重启会话)/ 单次查询 `memory_search(model="bge-m3")` / CLI `--model bge-m3`(search / eval / ranks 都有)。`py -3.12 mr.py stats` 列出每个预设有没有权重、有没有缓存。
 - 🔴 每个预设**自带 query 前缀**:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 `Instruct: …\nQuery: `——换模型不换前缀会无声掉分,金标只会说"变差了"。

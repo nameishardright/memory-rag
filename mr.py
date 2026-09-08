@@ -3,8 +3,10 @@
   py -3.12 mr.py stats                          # 语料/索引状态
   py -3.12 mr.py search "查询" [--mode hybrid|bm25|vec] [--topk 5] [--source case|book|mem] [--model bge-m3]
   py -3.12 mr.py eval [--mode all|bm25|vec|hybrid] [-v] [--model bge-m3]   # 金标评测:recall@5 / MRR@10 / 延迟
+  py -3.12 mr.py eval --golden golden/golden_negative.json -v   # 阴性对照:无答案问题的拦截率(拒答门 MR_GATE=note|drop|off)
   py -3.12 mr.py setup-vec                      # 装向量依赖(清华镜像)+预拉默认模型
   py -3.12 mr.py pull-model bge-m3              # 从 hf-mirror 拉某个预设模型的权重到 .cache/<名>/(可断点续传)
+  py -3.12 mr.py log [--days 7] [--src mcp]     # 查询日志汇总:0 命中的问题 + search→get 隐式正标签挖成金标候选
   embedding 模型一键切换:--model(单次)/ 环境变量 MR_EMBED_MODEL(进程默认,MCP 用这个)/ memory_search(model=)(单次查询)
 """
 import argparse
@@ -59,10 +61,32 @@ def cmd_search(q, mode, topk, source, model=None):
 
 
 def cmd_eval(mode, verbose, golden_path=None, model=None):
+    mr_tools.LOG_ON = False   # 金标几百条别淹掉真实查询日志
     with open(golden_path or os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
         golden = json.load(f)
     qs = golden["queries"]
     modes = ["bm25", "vec", "hybrid"] if mode == "all" else [mode]
+    negative = bool(golden.get("negative"))
+    if negative:
+        print("阴性金标 %d 条 | 模型 %s | 三级置信分布,理想 = low 多 high 少(MR_GATE=%s)" % (
+            len(qs), mr_index.model_spec(model)["key"], mr_tools.GATE_MODE))
+        for m in modes:
+            probe = mr_tools.memory_search("探针", mode=m, topk=1, model=model)
+            if probe["mode"].endswith("(fallback)") and m != "bm25":
+                print("%-8s 跳过 — %s" % (m, probe["note"]))
+                continue
+            dist, leaks = {"low": 0, "medium": 0, "high": 0}, []
+            for g in qs:
+                r = mr_tools.memory_search(g["q"], mode=m, topk=5, source=golden.get("source") or g.get("source"), model=model)
+                lv = "low" if not r["hits"] else r.get("confidence", "high")
+                dist[lv] += 1
+                if lv == "high":
+                    leaks.append((g["q"], r["hits"][0]["file"], r.get("gate")))
+            print("%-8s low %2d / medium %2d / high %2d  (共 %d)" % (m, dist["low"], dist["medium"], dist["high"], len(qs)))
+            if verbose:
+                for q, f, gate in leaks:
+                    print("    标成 high: %s -> %s  bm25 %s cos %s" % (q, f, gate["bm25_max"], gate["cos_max"]))
+        return
     print("金标 %d 条(draft=%s) | 模型 %s | recall@5=前5含期望文件 | MRR@10=首个命中名次倒数均值" % (
         len(qs), golden.get("draft"), mr_index.model_spec(model)["key"]))
     print("%-8s %-9s %-7s %s" % ("mode", "recall@5", "MRR@10", "avg延迟"))
@@ -71,7 +95,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
         if probe["mode"].endswith("(fallback)") and m != "bm25":
             print("%-8s 跳过 — %s" % (m, probe["note"]))
             continue
-        hit5, rr, t0, misses = 0, 0.0, time.time(), []
+        hit5, rr, t0, misses, flagged = 0, 0.0, time.time(), [], []
         for g in qs:
             r = mr_tools.memory_search(g["q"], mode=m, topk=10, source=golden.get("source") or g.get("source"), model=model)
             files, seen = [], set()
@@ -90,6 +114,8 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
                     return bool(mm) and g["expect_pages"][0] <= int(mm.group(1)) <= g["expect_pages"][1]
                 return True
             rank = next((i + 1 for i, (f, hd) in enumerate(files) if ok(f, hd)), None)
+            if rank and r.get("confidence") != "high":
+                flagged.append((g["q"], r.get("confidence"), r.get("gate")))
             if rank and rank <= 5:
                 hit5 += 1
             if rank:
@@ -97,7 +123,11 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
             else:
                 misses.append((g["q"], [f + "#" + (hd or "") for f, hd in files[:3]]))
         n = len(qs)
-        print("%-8s %2d/%-6d %.3f   %4.0fms" % (m, hit5, n, rr / n, (time.time() - t0) * 1000 / n))
+        print("%-8s %2d/%-6d %.3f   %4.0fms%s" % (m, hit5, n, rr / n, (time.time() - t0) * 1000 / n,
+                                                  ("   ⚠️ 正例不是 high 的 %d" % len(flagged)) if flagged else ""))
+        if verbose and flagged:
+            for q, lv, gate in flagged:
+                print("    %s: %s  bm25 %s cos %s" % (lv, q, gate["bm25_max"], gate["cos_max"]))
         if verbose and misses:
             for q, top in misses:
                 print("    miss: %s -> 实际top3=%s" % (q, top))
@@ -105,6 +135,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None):
 
 def cmd_ranks(model=None):
     """逐题×逐模式:期望文件的名次矩阵(归因用——miss 只是名次>10 的特例)。"""
+    mr_tools.LOG_ON = False
     with open(os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
         golden = json.load(f)
     qs = golden["queries"]
@@ -144,6 +175,66 @@ def cmd_setup_vec():
     st = mr_tools._ensure("vec")
     v = st["vec"]
     print("向量层: %s" % ("OK,已建 %d 条 embedding 缓存" % len(st["chunks"]) if v.available else "失败 — %s" % v.err))
+
+
+def cmd_log(days, src):
+    """查询日志汇总 + 金标候选:search 后 120s 内 get 了命中文件 → {"q","expect"};0 命中的问题 → 语料缺口 / 阴性题候选。"""
+    import datetime
+    p = mr_tools.LOG_PATH
+    if not os.path.exists(p):
+        print("还没有日志:%s(MCP/CLI search 会自动写;MR_LOG=0 关)" % p)
+        return
+    since = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+    recs = []
+    with open(p, encoding="utf-8") as f:
+        for ln in f:
+            try:
+                r = json.loads(ln)
+            except Exception:
+                continue
+            if r.get("ts", "") >= since and (src == "all" or r.get("src") == src):
+                recs.append(r)
+    searches = [r for r in recs if r.get("tool") == "search"]
+    gets = [r for r in recs if r.get("tool") == "get"]
+    print("近 %d 天(src=%s):search %d 次,get %d 次" % (days, src, len(searches), len(gets)))
+    zero = [r for r in searches if r.get("n") == 0]
+    if zero:
+        print("\n0 命中(%d)——语料缺口或阴性题候选:" % len(zero))
+        for r in zero[-20:]:
+            print("  %s  %s  [%s%s]" % (r["ts"][5:16], r["q"][:50], r.get("mode"), (" " + r["source"]) if r.get("source") else ""))
+    cands = []
+    for sr in searches:
+        if not sr.get("top"):
+            continue
+        t0 = sr["ts"]
+        hit_files = [t.split("#", 1)[0] for t in sr["top"]]
+        for g in gets:
+            if t0 <= g["ts"] <= _plus(t0, 120) and g.get("file") in hit_files:
+                cands.append({"q": sr["q"], "expect": [g["file"]], **({"source": sr["source"]} if sr.get("source") else {})})
+                break
+    seen, uniq = set(), []
+    for c in cands:
+        k = (c["q"], c["expect"][0])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(c)
+    if uniq:
+        print("\n金标候选(%d,search→get 隐式正标签;核对后挑进 golden/*.json):" % len(uniq))
+        for c in uniq[-30:]:
+            print("  " + json.dumps(c, ensure_ascii=False))
+    top = {}
+    for sr in searches:
+        for t in sr.get("top", [])[:1]:
+            top[t.split("#", 1)[0]] = top.get(t.split("#", 1)[0], 0) + 1
+    if top:
+        print("\n最常排第一的文件:")
+        for f_, n in sorted(top.items(), key=lambda kv: -kv[1])[:10]:
+            print("  %3d  %s" % (n, f_))
+
+
+def _plus(ts, sec):
+    import datetime
+    return (datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S") + datetime.timedelta(seconds=sec)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def cmd_pull_model(name):
@@ -191,6 +282,9 @@ if __name__ == "__main__":
     p.add_argument("-v", action="store_true")
     p.add_argument("--golden", default=None, help="金标文件,默认 golden/golden_queries.json;PDF 源用 golden/golden_pdf.json")
     p.add_argument("--model", default=None, help="同 search --model;只影响 vec/hybrid 两行")
+    p = sub.add_parser("log")            # 查询日志汇总 + 金标候选(search→get 隐式正标签)
+    p.add_argument("--days", type=int, default=7)
+    p.add_argument("--src", default="mcp", choices=["mcp", "cli", "all"])
     p = sub.add_parser("pull-model")
     p.add_argument("name", help="预设名或短名:bge-small-zh-v1.5|bge-m3|Qwen3-Embedding-0.6B|small|m3|qwen3")
     sub.add_parser("pdf-extract")   # 把教材 PDF 按页抽文本进 .cache/pdf-text(一次 10 分钟),之后 MR_PDF=1 秒开
@@ -206,6 +300,8 @@ if __name__ == "__main__":
         cmd_search(a.query, a.mode, a.topk, a.source, a.model)
     elif a.cmd == "eval":
         cmd_eval(a.mode, a.v, a.golden, a.model)
+    elif a.cmd == "log":
+        cmd_log(a.days, a.src)
     elif a.cmd == "pull-model":
         sys.exit(0 if cmd_pull_model(a.name) else 1)
     elif a.cmd == "pdf-extract":
