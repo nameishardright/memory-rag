@@ -53,3 +53,15 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks)。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
 
 教学 doc(设计决策×章节):`Desktop\Agent学习计划\notes\第5-6周-毕业项目2.0-记忆RAG.md`
+
+## 2026-09-08 热更 + PDF 原文源(开关)
+
+**热更**:原来 `mr_tools._ensure` 进程启动装一次索引就不看文件了,会话里新写的笔记查不到,要重启 Claude Code 才生效。现在每次查询前(最多每 `MR_RELOAD_SEC`=5 秒一次)比对语料指纹(`mr_corpus.signature()` = 各源 md 的名/mtime/size),变了就重建:BM25 按 md5 缓存分词只切新块、向量层按 md5 增量只算新块、模型实例复用。实测新笔记写入后下一次查询 2.0s 内命中(bm25#1+vec#1),删掉后消失;改造前重建要 12s,大头是 jieba 重切 1816 块,加分词缓存后 2s。
+
+**PDF 原文源**(两层开关,缺一不可):
+- 环境变量 `MR_PDF=1` 管**装不装**:装载 `Desktop\Agent学习计划\*.pdf` 按页切块(1296 块),文本抽取 `py -3.12 mr.py pdf-extract` 一次(指南 102s / HA 128s,pypdf + NFKC),缓存在 `.cache/pdf-text/`(gitignore,**书的原文绝不能进公开仓**),按 (size, mtime) 失效。
+- 查询参数 `source="pdf"` 管**查不查**:默认检索只走 case/book/mem 三源,PDF 只有显式 `source=pdf`(或 `include_pdf=true`)才参与。`memory_get("xxx.pdf#p81")` 取那一页 ±1。
+- 🔴 为什么不能全混进默认检索(数字):把 1296 页混进去,主金标 hybrid 18/18→17/18、MRR .835→.750,原文页把带 ⭐ 页码的笔记挤下去;**即便检索时剔掉 PDF,BM25 的 IDF/平均长度统计也被 PDF 拉偏**(.835→.806)。所以 BM25 按源集合**分别建索引**(`_SubBM25`:notes / pdf / all 懒建),向量层用掩码**先掩后切**。改完 MR_PDF 开/关两态主金标逐字一致。
+- PDF 消费单元是「文件#页」不是文件:`rrf_files(unit="page")`,否则一本书 700 页永远只出一页;评测器去重同理(有 `expect_pages` 时按页)。这一处修完 PDF 金标 9/12→11/12。
+- 数字(`golden/golden_pdf.json` 12 条,问法换说法、页码区间按笔记 ⭐ 页 ±2 反查核过):bm25 11/12 MRR .830 · vec 10/12 .628 · hybrid 11/12 .694 —— **原文页上 bm25 比 hybrid 强**(页块长、内容杂,向量腿拖后腿),12 条不够下调权的结论,先记着。MR_PDF=0 时 0/12(理应)。
+- 定位:笔记答「对应哪一章」(带页码指针),原文答「书上原话怎么说」。让 rh-memory MCP 带上 PDF:`claude mcp remove -s user rh-memory && claude mcp add -s user -e MR_PDF=1 rh-memory -- py -3.12 <path>\mr_mcp_server.py`(要重启会话才换新进程)。

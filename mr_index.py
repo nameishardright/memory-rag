@@ -53,9 +53,19 @@ def _index_text(c):
 class BM25:
     K1, B = 1.5, 0.75
 
+    _TOK_CACHE = {}   # md5 → tokens:热更重建时只切新块(2026-09-08 实测 1816 块全切要 ~10s,占重建时间大头)
+
     def __init__(self, chunks):
         self.chunks = chunks
-        self.docs = [tokenize(_index_text(c)) for c in chunks]
+        cache = BM25._TOK_CACHE
+        self.docs = []
+        for c in chunks:
+            key = c["md5"] + "|" + c["file"] + "|" + c["heading"]   # _index_text 含文件名+标题,同正文不同标题分词不同
+            if key not in cache:
+                cache[key] = tokenize(_index_text(c))
+            self.docs.append(cache[key])
+        if len(cache) > 4 * max(1, len(chunks)):   # 语料反复增删时别无限涨
+            cache.clear()
         self.N = len(self.docs)
         self.avgdl = sum(map(len, self.docs)) / max(1, self.N)
         self.tf, self.df = [], {}
@@ -67,7 +77,7 @@ class BM25:
             for t in d:
                 self.df[t] = self.df.get(t, 0) + 1
 
-    def search(self, query, topk=50):
+    def search(self, query, topk=50, mask=None):
         scores = [0.0] * self.N
         for t in tokenize(query):
             df = self.df.get(t)
@@ -80,16 +90,17 @@ class BM25:
                     dl = len(self.docs[i])
                     scores[i] += idf * f * (self.K1 + 1) / (
                         f + self.K1 * (1 - self.B + self.B * dl / self.avgdl))
-        order = sorted(range(self.N), key=lambda i: -scores[i])[:topk]
+        cand = range(self.N) if mask is None else [i for i in range(self.N) if i in mask]
+        order = sorted(cand, key=lambda i: -scores[i])[:topk]
         return [(i, scores[i]) for i in order if scores[i] > 0]
 
 
 class VecIndex:
     """embedding 按 chunk md5 缓存(.cache/):语料改一块只重算一块。"""
 
-    def __init__(self, chunks):
+    def __init__(self, chunks, model=None):
         self.chunks, self.available, self.err = chunks, False, ""
-        self._model = None
+        self._model = model     # 热更重建时把旧实例的模型传进来,省掉再加载
         try:
             import numpy as np
             from sentence_transformers import SentenceTransformer  # noqa: F401
@@ -120,9 +131,11 @@ class VecIndex:
                 for c, v in zip(todo, vecs):
                     old[c["md5"]] = v
             self.emb = np.stack([old[c["md5"]] for c in chunks])
+            # 缓存存「见过的全部」而不是「当前这批」:MR_PDF 开关来回切、或某源临时缺目录时,不用把 1100 页重算一遍
+            keys = list(old.keys())
             with open(meta_p, "w", encoding="utf-8") as f:
-                json.dump({"model": MODEL, "md5s": [c["md5"] for c in chunks]}, f)
-            np.save(emb_p, self.emb)
+                json.dump({"model": MODEL, "md5s": keys}, f)
+            np.save(emb_p, np.stack([old[k] for k in keys]))
             self.available = True
         except Exception as e:                      # 模型下载失败/磁盘问题等,都降级不炸
             self.err = "%s: %s" % (type(e).__name__, e)
@@ -133,10 +146,16 @@ class VecIndex:
             self._model = SentenceTransformer(_model_path())
         return self._model
 
-    def search(self, query, topk=50):
+    def search(self, query, topk=50, mask=None):
         qv = self._get_model().encode([QUERY_PREFIX + query], normalize_embeddings=True)[0]
         sims = self.emb @ qv
-        order = sims.argsort()[::-1][:topk]
+        if mask is not None:   # 先掩后切:否则 PDF 页先占掉前 K 个名次,剔完只剩空榜
+            idx = self.np.fromiter(mask, dtype=int)
+            if len(idx) == 0:
+                return []
+            order = idx[sims[idx].argsort()[::-1][:topk]]
+        else:
+            order = sims.argsort()[::-1][:topk]
         return [(int(i), float(sims[i])) for i in order]
 
 
@@ -151,17 +170,19 @@ def rrf(rank_lists, k=60, topk=50):
     return sorted(agg.items(), key=lambda kv: -kv[1])[:topk]
 
 
-def rrf_files(chunks, rank_lists, k=60, topk=50):
+def rrf_files(chunks, rank_lists, k=60, topk=50, unit="file"):
     """文件级 RRF:先把每路 chunk 榜折成文件榜(取该文件最好名次),再融合——
     索引单元(chunk)和消费单元(文件)不一致时,融合必须发生在消费单元上。
     返回 [(代表chunk_idx, score, per_leg_ranks)];per_leg_ranks 与 rank_lists 对齐(0起,None=该腿没投)。
     腿名次同时是置信信号:没有任何一条腿排进前3的文件多半是凑数——
     「分差断崖」的机制版,比分数百分比阈值诚实(RRF 分数天然贴平,光看分看不出谁在凑)。"""
+    # unit="page":PDF 源用,消费单元是「文件#页」而不是文件——一本书 700 页,按文件折叠就永远只出一页
+    key_of = (lambda c: c["file"] + "#" + c["heading"].split(" (")[0]) if unit == "page" else (lambda c: c["file"])
     file_rank_per_list, best_chunk = [], {}
     for lst in rank_lists:
         fr = {}
         for r, (i, _s) in enumerate(lst):
-            f = chunks[i]["file"]
+            f = key_of(chunks[i])
             if f not in fr:
                 fr[f] = r
                 if f not in best_chunk:

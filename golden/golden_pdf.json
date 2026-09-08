@@ -1,0 +1,19 @@
+{
+  "draft": false,
+  "source": "pdf",
+  "note": "PDF 原文源(MR_PDF=1)专用金标,2026-09-08 建。expect 是 PDF 文件名,expect_pages=[lo,hi] 是允许命中的页码区间(Acrobat 1-indexed,按笔记 ⭐ 页 ±2 定,页码用抽取后的文本反查核过)。用途:量「开 PDF 源能不能把原文那一页找出来」;主金标 golden_queries.json 仍是尺子,两态各跑一遍看会不会被挤。问法刻意换说法,不抄书里的小节标题。",
+  "queries": [
+    { "q": "非幂等的工具调用怎么防止重复执行,书上让传什么参数", "expect": ["Agentic-AI指南.pdf"], "expect_pages": [90, 94] },
+    { "q": "pass 上标 k 和 pass at k 哪个是可靠性下限,区别在哪", "expect": ["Agentic-AI指南.pdf"], "expect_pages": [188, 192] },
+    { "q": "过程奖励模型是给每一步打分还是只看最终结果", "expect": ["Agentic-AI指南.pdf"], "expect_pages": [178, 182] },
+    { "q": "把身份、工具、记忆和检索证据打包成一个能回放审计的上下文对象", "expect": ["Agentic-AI指南.pdf"], "expect_pages": [78, 83] },
+    { "q": "混合智能体 MoA 分几层,聚合器干什么", "expect": ["Agentic-AI指南.pdf"], "expect_pages": [130, 142] },
+    { "q": "记忆检索打分里时间衰减和重要性是相乘还是相加,系数多少", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [273, 277] },
+    { "q": "向量检索时把一个查询扩成多个再合并结果的那个函数", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [293, 297] },
+    { "q": "MCP 服务器用 sse 还是 streamable http,端点路径怎么定", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [388, 394] },
+    { "q": "步骤奖励是怎么从模型输出里数出来的", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [436, 448] },
+    { "q": "自己写的 Tool 类怎么转成 OpenAI 函数调用要的 schema", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [237, 241] },
+    { "q": "往 Smithery 上发布 MCP 服务器要准备哪几个配置文件", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [423, 429] },
+    { "q": "上下文包分成哪几个分区,State 那一区放什么", "expect": ["从零开始构建智能体-Hello-Agents-V1.0.3.pdf"], "expect_pages": [312, 320] }
+  ]
+}

@@ -7,6 +7,7 @@
 """
 import argparse
 import json
+import re
 import os
 import subprocess
 import sys
@@ -16,6 +17,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
+import mr_corpus
 import mr_tools  # noqa: E402
 import mr_index  # noqa: E402
 
@@ -44,8 +46,8 @@ def cmd_search(q, mode, topk, source):
         print("      %s" % h["snippet"][:120].replace("\n", " "))
 
 
-def cmd_eval(mode, verbose):
-    with open(os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
+def cmd_eval(mode, verbose, golden_path=None):
+    with open(golden_path or os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
         golden = json.load(f)
     qs = golden["queries"]
     modes = ["bm25", "vec", "hybrid"] if mode == "all" else [mode]
@@ -58,19 +60,29 @@ def cmd_eval(mode, verbose):
             continue
         hit5, rr, t0, misses = 0, 0.0, time.time(), []
         for g in qs:
-            r = mr_tools.memory_search(g["q"], mode=m, topk=10)
+            r = mr_tools.memory_search(g["q"], mode=m, topk=10, source=golden.get("source") or g.get("source"))
             files, seen = [], set()
             for h in r["hits"]:
-                if h["file"] not in seen:
-                    seen.add(h["file"])
-                    files.append(h["file"])
-            rank = next((i + 1 for i, f in enumerate(files) if f in g["expect"]), None)
+                # 有 expect_pages 时按「文件#页」去重(同一本 PDF 不同页各算一条),否则按文件
+                key = h["file"] + ("#" + re.sub(r" \(\d+\)$", "", h["heading"] or "") if g.get("expect_pages") else "")
+                if key not in seen:
+                    seen.add(key)
+                    files.append((h["file"], h["heading"]))
+            # expect_pages=[lo,hi]:PDF 源用,命中文件还得页码落在区间(heading 形如 p81 / p81 (2))
+            def ok(f, head):
+                if f not in g["expect"]:
+                    return False
+                if g.get("expect_pages"):
+                    mm = re.match(r"p(\d+)", head or "")
+                    return bool(mm) and g["expect_pages"][0] <= int(mm.group(1)) <= g["expect_pages"][1]
+                return True
+            rank = next((i + 1 for i, (f, hd) in enumerate(files) if ok(f, hd)), None)
             if rank and rank <= 5:
                 hit5 += 1
             if rank:
                 rr += 1.0 / rank
             else:
-                misses.append((g["q"], files[:3]))
+                misses.append((g["q"], [f + "#" + (hd or "") for f, hd in files[:3]]))
         n = len(qs)
         print("%-8s %2d/%-6d %.3f   %4.0fms" % (m, hit5, n, rr / n, (time.time() - t0) * 1000 / n))
         if verbose and misses:
@@ -129,10 +141,13 @@ if __name__ == "__main__":
     p.add_argument("query")
     p.add_argument("--mode", default="hybrid", choices=["bm25", "vec", "hybrid"])
     p.add_argument("--topk", type=int, default=5)
-    p.add_argument("--source", default=None, choices=["case", "book", "mem"])
+    p.add_argument("--source", default=None, choices=["case", "book", "mem", "pdf"])
+    p.add_argument("--include-pdf", action="store_true")
     p = sub.add_parser("eval")
     p.add_argument("--mode", default="all", choices=["all", "bm25", "vec", "hybrid"])
     p.add_argument("-v", action="store_true")
+    p.add_argument("--golden", default=None, help="金标文件,默认 golden/golden_queries.json;PDF 源用 golden/golden_pdf.json")
+    sub.add_parser("pdf-extract")   # 把教材 PDF 按页抽文本进 .cache/pdf-text(一次 10 分钟),之后 MR_PDF=1 秒开
     sub.add_parser("ranks")
     p = sub.add_parser("get")           # 二段式第二步:search 定位→get 全文(别只吃 snippet,截断缝合教训)
     p.add_argument("file")
@@ -143,7 +158,12 @@ if __name__ == "__main__":
     elif a.cmd == "search":
         cmd_search(a.query, a.mode, a.topk, a.source)
     elif a.cmd == "eval":
-        cmd_eval(a.mode, a.v)
+        cmd_eval(a.mode, a.v, a.golden)
+    elif a.cmd == "pdf-extract":
+        for path in mr_corpus.pdf_files():
+            t0 = time.time()
+            pages = mr_corpus.extract_pdf(path, progress=lambda i, n, _p=path: print("[pdf] %s %d/%d" % (os.path.basename(_p), i, n), file=sys.stderr))
+            print("%s: %d 页, 非空 %d 页, %.0fs" % (os.path.basename(path), len(pages), sum(1 for p in pages if len(p) >= mr_corpus.MIN_PAGE_CHARS), time.time() - t0))
     elif a.cmd == "ranks":
         cmd_ranks()
     elif a.cmd == "get":

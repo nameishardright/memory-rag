@@ -66,3 +66,9 @@ claude mcp add --scope user rh-memory -- py -3.12 <path>/mr_mcp_server.py
 | `golden/golden_queries.json` | 18-query golden eval set (v1, accepted) |
 
 The corpora themselves are personal notes and are **not** included; the golden set documents the retrieval contract. Original operational notes (Chinese): [`docs/ops-notes.zh.md`](docs/ops-notes.zh.md).
+
+### Hot reload & optional PDF source (2026-09-08)
+
+- **Hot reload**: the index now re-checks a corpus fingerprint (file name / mtime / size) at most every 5 s and rebuilds incrementally — new notes are searchable on the next query without restarting the MCP server (tokenisation and embeddings are md5-cached, so a rebuild costs ~2 s).
+- **PDF source, two switches**: `MR_PDF=1` loads the textbook PDFs page-by-page (`py -3.12 mr.py pdf-extract` once; text cached under `.cache/`, never committed). Default search still covers only the three note corpora; pass `source="pdf"` to search the original pages, then `memory_get("<book>.pdf#p81")` for the page ±1.
+- Why two switches: mixing 1,296 pages into the default search dropped the main golden set from 18/18 · MRR .835 to 17/18 · .750 — and even with PDF hits filtered out, BM25's corpus statistics drifted (.806). Fix: per-source BM25 indexes + masked vector search. With PDFs loaded, the main golden set is byte-for-byte identical to the no-PDF run. `golden/golden_pdf.json` (12 paraphrased queries with expected page ranges): bm25 11/12 · hybrid 11/12.
