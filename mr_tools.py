@@ -39,13 +39,13 @@ def _rebuild(reason):
     _STATE["bm25"] = _SubBM25(chunks, notes_idx)                          # 默认三源
     _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_idx) if pdf_idx else None   # source=pdf
     _STATE.pop("bm25_all", None)                                          # include_pdf=True 时懒建
-    if "vec" in _STATE:   # embedding 按 md5 缓存,只算新块;模型实例复用
-        _STATE["vec"] = mr_index.VecIndex(chunks, model=getattr(_STATE["vec"], "_model", None))
+    for slug, v in list(_STATE.get("vecs", {}).items()):   # 每个已装的模型都增量重建:md5 缓存只算新块,模型实例复用
+        _STATE["vecs"][slug] = mr_index.VecIndex(chunks, model=v._model, spec=v.spec)
     _STATE["sig"] = mr_corpus.signature()
     print("[reload] %s:语料 %d→%d 块" % (reason, old_n, len(chunks)), file=sys.stderr)
 
 
-def _ensure(mode):
+def _ensure(mode, model=None):
     """🔴 热更(2026-09-08):原来进程启动装一次索引就不看文件了,会话里新写的笔记查不到,要重启会话——
     现在每次查询前(最多每 RELOAD_SEC 秒一次)比对语料指纹,变了就重建;向量层按 md5 增量,只多算新块。"""
     with _LOCK:
@@ -57,8 +57,13 @@ def _ensure(mode):
             _STATE["sig_at"] = now
             if mr_corpus.signature() != _STATE.get("sig"):
                 _rebuild("检测到文件变化")
-        if mode in ("vec", "hybrid") and "vec" not in _STATE:
-            _STATE["vec"] = mr_index.VecIndex(_STATE["chunks"])
+        if mode in ("vec", "hybrid"):
+            # 一键切换:每个模型各建各的向量层,按 slug 存在 _STATE["vecs"],切回来不重算;没权重的模型 available=False,查询时回退 bm25
+            spec = mr_index.model_spec(model)
+            vecs = _STATE.setdefault("vecs", {})
+            if spec["slug"] not in vecs:
+                vecs[spec["slug"]] = mr_index.VecIndex(_STATE["chunks"], spec=spec)
+            _STATE["vec"] = vecs[spec["slug"]]   # 「最近一次用的」;stats / 老脚本还读这个名字
         return _STATE
 
 
@@ -74,12 +79,19 @@ def _snippet(text, query, width=300):
     return "…" + text[start:start + width]
 
 
-def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False):
-    """source=None 时默认只查 case/book/mem 三源;PDF 原文(要 MR_PDF=1 装载)只有 source="pdf" 或 include_pdf=True 才参与。
+def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None):
+    """model=None 时向量腿用进程默认模型(MR_EMBED_MODEL,默认 bge-small-zh-v1.5);传预设名可单次切换,见 mr_index.MODELS。
+    🔴 按源选模型(2026-09-08 用户 GPU 对照,同一 3116 块):笔记金标 small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级),
+       PDF 金标 small 11/12 .694 vs bge-m3 12/12 .917——截尾的代价取决于块长和答案位置:笔记按标题分段主题在段首,PDF 一页一块答案在页中任何位置。
+       所以 source="pdf" 且没显式传 model 时走 MR_EMBED_MODEL_PDF(没设=默认模型);笔记留 small(快 4 倍),原文页走 bge-m3。
+    source=None 时默认只查 case/book/mem 三源;PDF 原文(要 MR_PDF=1 装载)只有 source="pdf" 或 include_pdf=True 才参与。
     🔴 为什么按查询开关而不是全混:2026-09-08 实测把 1296 页原文混进默认检索,主金标 hybrid 18/18→17/18、MRR .835→.750——
     原文页把带 ⭐ 页码的笔记挤下去;而 source=pdf 单独查,原文页 9/12 能找到。两层开关:环境变量管装不装,参数管查不查。"""
-    st = _ensure(mode)
-    chunks, note = st["chunks"], ""
+    if model is None and source == "pdf":
+        model = os.environ.get("MR_EMBED_MODEL_PDF") or None
+    st = _ensure(mode, model)
+    spec = mr_index.model_spec(model)
+    chunks, note, used_model = st["chunks"], "", None
     if source:
         allowed = {source}
     elif include_pdf:
@@ -103,13 +115,14 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False):
     if mode == "bm25":
         ranked = bm
     else:
-        v = st.get("vec")
+        v = st.get("vecs", {}).get(spec["slug"])
         if v is None or not v.available:
             ranked, note = bm, "向量层不可用(%s),已回退 bm25" % getattr(v, "err", "")
             mode = "bm25(fallback)"
         elif mode == "vec":
-            ranked = v.search(query, topk=K, mask=mask)
+            ranked, used_model = v.search(query, topk=K, mask=mask), spec["key"]
         else:
+            used_model = spec["key"]
             ranked = mr_index.rrf_files(chunks, [bm, v.search(query, topk=K, mask=mask)],
                                         unit=("page" if allowed == {"pdf"} else "file"))
             leg_names = ("bm25", "vec")
@@ -132,7 +145,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False):
         hits.append(h)
         if len(hits) >= topk:
             break
-    return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "note": note, "hits": hits}
+    return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "note": note, "hits": hits}
 
 
 def memory_get(file, source=None):
@@ -179,6 +192,10 @@ REGISTRY = {
             "topk": {"type": "integer", "description": "返回条数,默认 5,上限 10"},
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf"], "description": "可选,只查某一源。默认只查 case/book/mem;要教材**原文那一页**用 source=pdf(命中的 heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
+            "model": {"type": "string", "enum": list(mr_index.MODELS),
+                      "description": "可选,向量腿用哪个 embedding 模型,单次切换;不传=服务端默认(MR_EMBED_MODEL,默认 bge-small-zh-v1.5;"
+                                     "source=pdf 时默认走 MR_EMBED_MODEL_PDF,原文页上 bge-m3 明显更准)。"
+                                     "本地没权重会回退 bm25 并在 note 里说明(先 py -3.12 mr.py pull-model <名>)"},
         }, "required": ["query"]},
     },
     "memory_get": {

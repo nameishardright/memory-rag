@@ -65,3 +65,11 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - PDF 消费单元是「文件#页」不是文件:`rrf_files(unit="page")`,否则一本书 700 页永远只出一页;评测器去重同理(有 `expect_pages` 时按页)。这一处修完 PDF 金标 9/12→11/12。
 - 数字(`golden/golden_pdf.json` 12 条,问法换说法、页码区间按笔记 ⭐ 页 ±2 反查核过):bm25 11/12 MRR .830 · vec 10/12 .628 · hybrid 11/12 .694 —— **原文页上 bm25 比 hybrid 强**(页块长、内容杂,向量腿拖后腿),12 条不够下调权的结论,先记着。MR_PDF=0 时 0/12(理应)。
 - 定位:笔记答「对应哪一章」(带页码指针),原文答「书上原话怎么说」。让 rh-memory MCP 带上 PDF:`claude mcp remove -s user rh-memory && claude mcp add -s user -e MR_PDF=1 rh-memory -- py -3.12 <path>\mr_mcp_server.py`(要重启会话才换新进程)。
+
+**embedding 模型一键切换(2026-09-08)**:预设表在 `mr_index.MODELS`:`bge-small-zh-v1.5`(默认,24M,512 token,92MB)/ `bge-m3`(568M,8192 token,2.27GB,仓里只有 pytorch_model.bin)/ `Qwen3-Embedding-0.6B`(0.6B,32k token,1.19GB);短名 small / m3 / qwen3 也认,任意 HF id 或本地权重目录也能传(前缀用 `MR_EMBED_PREFIX` 给)。
+- 三个入口:进程默认 `MR_EMBED_MODEL=bge-m3`(MCP 用这个,要重启会话)/ 单次查询 `memory_search(model="bge-m3")` / CLI `--model bge-m3`(search / eval / ranks 都有)。`py -3.12 mr.py stats` 列出每个预设有没有权重、有没有缓存。
+- 🔴 每个预设**自带 query 前缀**:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 `Instruct: …\nQuery: `——换模型不换前缀会无声掉分,金标只会说"变差了"。
+- 缓存按模型分文件 `.cache/emb-<模型>.npy` + `emb_meta-<模型>.json`(老的 emb.npy 首次自动改名迁移,不重算;⚠️ 改名要在 `with open()` 外面,Windows 上文件开着 os.replace 报 PermissionError,吞掉就成了静默全量重算),切回来零成本;每个模型的向量层在进程里各自懒建,内存按装了几个算(bge-m3 fp32 约 2.3GB)。
+- 拉权重:`py -3.12 mr.py pull-model bge-m3`(curl -C - 断点续传,走 HF_ENDPOINT=hf-mirror.com)。🔴 镜像对仓里不存在的文件回 15 字节 "Entry not found" 而不是 404,pull-model 会识别并删掉;别手工 curl 留下假权重。没本地权重**不会**偷偷去 HF 拉(内网拉不动/代理劫持),hybrid 退 bm25 并在 note 里说 pull-model;真要联网拉设 `MR_EMBED_ALLOW_DOWNLOAD=1`。
+- 数字(用户 GPU 对照,同一 3116 块,笔记 18 题 + PDF 12 题):笔记 hybrid small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级);PDF small 11/12 .694 vs bge-m3 12/12 .917;笔记查询中位延迟 49ms vs 199ms(GPU;CPU 上更慢)。**截尾的代价取决于块长和答案位置**:笔记按标题分段主题在段首,截掉的是尾巴;PDF 一页一块,答案在页中任何位置。同一天先试过按 512 token 切小块:hybrid .835→.801(800 字)→.764(420 字),多向量 max-pool .798——**一段一块本身就是信号,切小反而掉**。
+- 决策:笔记留 small,`source=pdf` 走 bge-m3——`MR_EMBED_MODEL_PDF=bge-m3`(没显式传 model 且 source=pdf 时生效)。MCP 注册:`claude mcp remove -s user rh-memory && claude mcp add -s user -e MR_PDF=1 -e MR_EMBED_MODEL_PDF=bge-m3 rh-memory -- py -3.12 <path>\mr_mcp_server.py`,之前先 `pull-model bge-m3` 并 `MR_PDF=1 py -3.12 mr.py eval --golden golden/golden_pdf.json --model bge-m3` 建一次缓存(CPU 上 1296 页要十几分钟,只算一次)。

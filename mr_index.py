@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""检索层三形态:BM25(零依赖手写) / 本地向量(bge-small-zh,懒加载+缓存) / RRF 混合。
+"""检索层三形态:BM25(零依赖手写) / 本地向量(bge-small-zh 默认,可一键切 bge-m3 / Qwen3,懒加载+按模型分缓存) / RRF 混合。
 向量依赖缺失或模型拉不下来时 available=False,上层自动回退 BM25,不炸。
 """
 import math
@@ -9,15 +9,69 @@ import re
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")  # GFW:HuggingFace 走镜像
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-CACHE = os.path.join(BASE, ".cache")
-MODEL = "BAAI/bge-small-zh-v1.5"          # 24M 参数中文 embedding,CPU 秒级
-# 本地模型优先:hf 下载会被 Windows 注册表系统代理(v2rayN)劫持,curl 预拉到 .cache 则永久离线可用
-MODEL_LOCAL = os.path.join(BASE, ".cache", "bge-small-zh-v1.5")
+CACHE = os.path.join(BASE, ".cache")                                   # embedding 缓存 / PDF 文本
+MODELS_DIR = os.environ.get("MR_MODELS_DIR") or CACHE                    # 模型权重目录:<MODELS_DIR>/<模型名>/
+
+# ── embedding 模型预设:一键切换(2026-09-08)──
+# 选谁:memory_search(model=) > 环境变量 MR_EMBED_MODEL > 默认 bge-small-zh-v1.5;键不分大小写,也认短名 small/m3/qwen3。
+# 🔴 每个预设自带 query 前缀:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 Instruct 格式——
+#    换模型不换前缀会无声掉分,金标只会告诉你"变差了"不会告诉你为什么。
+# 权重放 .cache/<名>/(gitignore),`py -3.12 mr.py pull-model <名>` 从 hf-mirror 拉;embedding 缓存按模型分文件,切回来不重算。
+MODELS = {
+    "bge-small-zh-v1.5": {"id": "BAAI/bge-small-zh-v1.5", "prefix": "为这个句子生成表示以用于检索相关文章：",
+                          "weights": "model.safetensors", "extra": ["vocab.txt", "sentence_bert_config.json"],
+                          "note": "24M 参数,512 token,92MB,CPU 毫秒级;语料 40% 块超限被截尾"},
+    "bge-m3": {"id": "BAAI/bge-m3", "prefix": "", "weights": "pytorch_model.bin",   # 仓里没有 safetensors
+               "extra": ["sentencepiece.bpe.model", "sentence_bert_config.json"],
+               "note": "568M 参数,8192 token,2.27GB;查询不加指令"},
+    "Qwen3-Embedding-0.6B": {"id": "Qwen/Qwen3-Embedding-0.6B", "weights": "model.safetensors",
+                             "prefix": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+                             "extra": ["merges.txt", "vocab.json"],
+                             "note": "0.6B 参数,32k token,1.19GB;查询要 Instruct 前缀"},
+}
+_ALIASES = {"small": "bge-small-zh-v1.5", "m3": "bge-m3", "qwen3": "Qwen3-Embedding-0.6B", "qwen3-0.6b": "Qwen3-Embedding-0.6B"}
+DEFAULT_MODEL = "bge-small-zh-v1.5"
+COMMON_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+                "modules.json", "config_sentence_transformers.json", "1_Pooling/config.json"]
+
+
+def model_spec(key=None):
+    """预设名 / 短名 / 任意 HF id / 本地目录 → {key, id, local, prefix, weights, extra, slug}。
+    没权重不在这里报错,留给 VecIndex 降级(hybrid 退 bm25 并在 note 里说明)。"""
+    key = (key or os.environ.get("MR_EMBED_MODEL") or DEFAULT_MODEL).strip()
+    k = _ALIASES.get(key.lower(), key)
+    hit = next((n for n in MODELS if n.lower() == k.lower()), None)
+    if hit:
+        spec = dict(MODELS[hit], key=hit, local=os.path.join(MODELS_DIR, hit))
+    elif os.path.isdir(key):                                   # 自己 scp 来的权重目录
+        name = os.path.basename(os.path.normpath(key))
+        spec = {"key": name, "id": name, "local": key, "prefix": os.environ.get("MR_EMBED_PREFIX", ""),
+                "weights": "model.safetensors", "extra": [], "note": "本地目录"}
+    else:                                                      # 任意 HF id:前缀自己用 MR_EMBED_PREFIX 给
+        name = key.split("/")[-1]
+        spec = {"key": name, "id": key, "local": os.path.join(MODELS_DIR, name),
+                "prefix": os.environ.get("MR_EMBED_PREFIX", ""), "weights": "model.safetensors", "extra": [], "note": "自定义"}
+    spec["slug"] = re.sub(r"[^A-Za-z0-9._-]+", "_", spec["key"])
+    return spec
+
+
+def has_weights(spec):
+    return any(os.path.isfile(os.path.join(spec["local"], w))
+               for w in dict.fromkeys([spec["weights"], "model.safetensors", "pytorch_model.bin"]))
+
+
+def model_path(spec):
+    # 本地权重优先:hf 下载会被 Windows 注册表系统代理(v2rayN)劫持,curl 预拉到 .cache 则永久离线可用
+    return spec["local"] if has_weights(spec) else spec["id"]
+
+
+# 向后兼容的模块级常量 = 进程默认模型(旧代码 / 实验脚本还读这几个名字)
+_DEF = model_spec()
+MODEL, MODEL_LOCAL, QUERY_PREFIX = _DEF["id"], _DEF["local"], _DEF["prefix"]
 
 
 def _model_path():
-    return MODEL_LOCAL if os.path.isfile(os.path.join(MODEL_LOCAL, "model.safetensors")) else MODEL
-QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："  # bge-zh 官方建议的查询指令
+    return model_path(_DEF)
 
 _ASCII = re.compile(r"[A-Za-z0-9_./:\-]+")
 _CJK = re.compile(r"[一-鿿]+")
@@ -96,9 +150,10 @@ class BM25:
 
 
 class VecIndex:
-    """embedding 按 chunk md5 缓存(.cache/):语料改一块只重算一块。"""
+    """embedding 按 chunk md5 缓存(.cache/emb-<模型>.npy):语料改一块只重算一块;缓存按模型分文件,切换模型不互相冲掉。"""
 
-    def __init__(self, chunks, model=None):
+    def __init__(self, chunks, model=None, spec=None):
+        self.spec = spec or model_spec()
         self.chunks, self.available, self.err = chunks, False, ""
         self._model = model     # 热更重建时把旧实例的模型传进来,省掉再加载
         try:
@@ -107,19 +162,25 @@ class VecIndex:
         except ImportError as e:
             self.err = "依赖未装(%s),先跑: py -3.12 mr.py setup-vec" % e.name
             return
+        if not has_weights(self.spec) and not os.environ.get("MR_EMBED_ALLOW_DOWNLOAD"):
+            # 宁可明说也不偷偷去 HF 拉:内网拉不动、代理劫持、拉一半的权重更难查。要联网拉设 MR_EMBED_ALLOW_DOWNLOAD=1
+            self.err = "模型 %s 没有本地权重(%s),先跑: py -3.12 mr.py pull-model %s" % (
+                self.spec["key"], self.spec["local"], self.spec["key"])
+            return
         try:
             import json
             self.np = np
             os.makedirs(CACHE, exist_ok=True)
-            meta_p = os.path.join(CACHE, "emb_meta.json")
-            emb_p = os.path.join(CACHE, "emb.npy")
+            meta_p = os.path.join(CACHE, "emb_meta-%s.json" % self.spec["slug"])
+            emb_p = os.path.join(CACHE, "emb-%s.npy" % self.spec["slug"])
+            self._migrate_legacy(meta_p, emb_p)
             old = {}
             if os.path.exists(meta_p) and os.path.exists(emb_p):
                 try:
                     with open(meta_p, encoding="utf-8") as f:
                         m = json.load(f)
                     arr = np.load(emb_p)
-                    if m.get("model") == MODEL and len(m.get("md5s", [])) == len(arr):
+                    if m.get("model") == self.spec["id"] and len(m.get("md5s", [])) == len(arr):
                         old = {h: arr[i] for i, h in enumerate(m["md5s"])}
                 except Exception:
                     old = {}
@@ -134,20 +195,35 @@ class VecIndex:
             # 缓存存「见过的全部」而不是「当前这批」:MR_PDF 开关来回切、或某源临时缺目录时,不用把 1100 页重算一遍
             keys = list(old.keys())
             with open(meta_p, "w", encoding="utf-8") as f:
-                json.dump({"model": MODEL, "md5s": keys}, f)
+                json.dump({"model": self.spec["id"], "md5s": keys}, f)
             np.save(emb_p, np.stack([old[k] for k in keys]))
             self.available = True
-        except Exception as e:                      # 模型下载失败/磁盘问题等,都降级不炸
+        except Exception as e:                      # 模型加载失败/磁盘问题等,都降级不炸
             self.err = "%s: %s" % (type(e).__name__, e)
+
+    def _migrate_legacy(self, meta_p, emb_p):
+        """老缓存文件名 emb.npy / emb_meta.json(单模型时代)→ 按模型分文件;只在 meta 里的模型对得上时改名,不重算。"""
+        import json
+        lm, le = os.path.join(CACHE, "emb_meta.json"), os.path.join(CACHE, "emb.npy")
+        if os.path.exists(meta_p) or not (os.path.exists(lm) and os.path.exists(le)):
+            return
+        try:
+            with open(lm, encoding="utf-8") as f:
+                same = json.load(f).get("model") == self.spec["id"]
+            if same:   # 🔴 改名必须在 with 块外:Windows 上文件还开着 os.replace 报 PermissionError,吞掉就成了静默全量重算(2026-09-08 踩)
+                os.replace(lm, meta_p)
+                os.replace(le, emb_p)
+        except Exception:
+            pass
 
     def _get_model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(_model_path())
+            self._model = SentenceTransformer(model_path(self.spec))
         return self._model
 
     def search(self, query, topk=50, mask=None):
-        qv = self._get_model().encode([QUERY_PREFIX + query], normalize_embeddings=True)[0]
+        qv = self._get_model().encode([self.spec["prefix"] + query], normalize_embeddings=True)[0]
         sims = self.emb @ qv
         if mask is not None:   # 先掩后切:否则 PDF 页先占掉前 K 个名次,剔完只剩空榜
             idx = self.np.fromiter(mask, dtype=int)
