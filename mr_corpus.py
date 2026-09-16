@@ -17,6 +17,10 @@ SOURCES = [
      "dir": os.path.join(HOME, r"Desktop\Agent学习计划\notes"), "redact": False},
     {"key": "mem", "name": "CC长期记忆",
      "dir": os.path.join(HOME, r".claude\projects\C--Users-zihao\memory"), "redact": True},
+    # 第五源(2026-09-16):股票判断案例库——stock-analysis 的 case_lib.py 把每张历史判断卡(三个数/依据/自我否决/结果)写成一份 md,
+    # 目录不存在就静默跳过;私有数据,永不进公开仓(只有路径在代码里)。决策时 memory_search(source="stock") 回放同类旧账。
+    {"key": "stock", "name": "股票判断案例库",
+     "dir": os.environ.get("MR_STOCK_DIR") or os.path.join(HOME, r"Desktop\股票分析\cases\md"), "redact": True},
 ]
 DENY = {"MEMORY.md"}          # 纯索引,内容都在单文件里,入库只会造重复命中
 

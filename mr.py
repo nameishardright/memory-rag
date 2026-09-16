@@ -289,7 +289,7 @@ if __name__ == "__main__":
     p.add_argument("query")
     p.add_argument("--mode", default="hybrid", choices=["bm25", "vec", "hybrid"])
     p.add_argument("--topk", type=int, default=5)
-    p.add_argument("--source", default=None, choices=["case", "book", "mem", "pdf"])
+    p.add_argument("--source", default=None, choices=["case", "book", "mem", "pdf", "stock"])
     p.add_argument("--include-pdf", action="store_true")
     p.add_argument("--model", default=None, help="embedding 模型预设名(bge-small-zh-v1.5 / bge-m3 / Qwen3-Embedding-0.6B 或短名 small/m3/qwen3)")
     p.add_argument("--rerank", default=None, help="重排预设名(bge-reranker-base / bge-reranker-v2-m3 或短名 base/v2-m3);不传跟 MR_RERANK")
