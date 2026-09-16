@@ -50,7 +50,7 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - embedding 缓存在 `.cache\`,按 chunk md5 增量复用;改语料只重算改动块。换模型名会全量重算。
 - `MR_TOKENIZER=bigram` 环境变量可强制关 jieba(分词器对比实验用)。
 - MCP 纪律:`mr_mcp_server.py` 里 stdout 已换成 stderr,库里随便 print 不会打脏协议流——但别改掉开头那两行。
-- 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks)。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
+- 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks,2026-08-21)→ **.838(1922 chunks,2026-09-16 重跑)**;同期 bm25 17/18 .852→.789、vec 16/18 .716 —— **语料长大只稀释 BM25 单腿,融合没掉**(1819→1922 块,.835→.838)。PDF 金标同日 hybrid 12/12 .917(MR_EMBED_MODEL_PDF=bge-m3),阴性 12 条 low 7/medium 4/high 1(原 8/3/1),MR_PDF 开/关两态主金标仍逐字一致。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
 
 教学 doc(设计决策×章节):`Desktop\Agent学习计划\notes\第5-6周-毕业项目2.0-记忆RAG.md`
 
