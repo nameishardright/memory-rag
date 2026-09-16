@@ -50,7 +50,9 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 - embedding 缓存在 `.cache\`,按 chunk md5 增量复用;改语料只重算改动块。换模型名会全量重算。
 - `MR_TOKENIZER=bigram` 环境变量可强制关 jieba(分词器对比实验用)。
 - MCP 纪律:`mr_mcp_server.py` 里 stdout 已换成 stderr,库里随便 print 不会打脏协议流——但别改掉开头那两行。
-- 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks,2026-08-21)→ **.838(1922 chunks,2026-09-16 重跑)**;同期 bm25 17/18 .852→.789、vec 16/18 .716 —— **语料长大只稀释 BM25 单腿,融合没掉**(1819→1922 块,.835→.838)。PDF 金标同日 hybrid 12/12 .917(MR_EMBED_MODEL_PDF=bge-m3),阴性 12 条 low 7/medium 4/high 1(原 8/3/1),MR_PDF 开/关两态主金标仍逐字一致。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
+- 金标 `golden\golden_queries.json` **v1 已验收**(2026-08-21,draft=false)。官方基线:hybrid 18/18·MRR .880(937 chunks,2026-08-21)→ **.838(1922 chunks,2026-09-16 重跑)**;同期 bm25 17/18 .852→.789、vec 16/18 .716 —— **语料长大只稀释 BM25 单腿,融合没掉**(1819→1922 块,.835→.838)。PDF 金标同日 hybrid 12/12 .917(MR_EMBED_MODEL_PDF=bge-m3),阴性 12 条 low 7/medium 4/high 1(原 8/3/1),MR_PDF 开/关两态主金标仍逐字一致。
+- **2026-09-16 金标扩到 19 条**(hybrid 19/19·.846,bm25 18/19·.800,vec 17/19·.731):q19「cherry-pick 直合」是第一条**不是人工编的题** —— `mr.py log` 从 query-log 挖的隐式正标签(真实 search → 120s 内 memory_get 同一文件)。裁决：expect 只收 gerrit-workflow.md,排第 2 的 claude-md-rules-details.md 拒收(它的 cherry-pick 是「叠错分支」补救、不是「已推 change 直合」,同「指南第4章拒收」口径)。该题是当前唯一一条**答对了但置信只有 medium** 的正例(单腿过线,bm25 16.1 / cos .45),故意留着当置信门的活样本——**别为了 eval 不报 ⚠️ 去调阈值**。日志里那条 0 命中「红烧肉」**本来就在阴性集里**(当时建集时自己跑的),阴性集维持 12 条 —— 挖出来的候选**先查重**再收。
+- 观察(不改):q19 的 bm25#1 命中的是 gerrit-workflow.md 里的「索引行归档」段而不是正文「直合 %submit」段 —— MEMORY.md 本体已进 DENY,但它的**历史副本被抄在各个记忆文件末尾**,那是关键词密度最高的一行,天然吸 BM25。文件级判定下不影响 recall,只影响 snippet 质量(用户看到的是索引行而不是做法);要改就是分块时跳「索引行归档」标题,但那会动到分块规则→CACHE_VER+1 全量重算,**先记下来不动**。改金标必须重跑 eval 并在教学 doc 记新基线;语料里新长出"第二真源"时 expect 要跟着演化(q9 先例)。
 
 教学 doc(设计决策×章节):`Desktop\Agent学习计划\notes\第5-6周-毕业项目2.0-记忆RAG.md`
 
