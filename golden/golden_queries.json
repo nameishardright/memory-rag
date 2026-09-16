@@ -1,6 +1,6 @@
 {
   "draft": false,
-  "note": "v1 已验收(2026-08-21,zihao 授权 CC 代裁,审计轨迹见教学 doc 实验1节)。裁决:仅 q9 expect 加档 教学doc(其 §4 是'三方法怎么手搓'的正面答案,语料演化产生的第二真源);指南第4章拒收——它的'三'是 MCP 三原语(resources/tools/prompts),不是 stdio 三方法(initialize/tools/list/tools/call),答上去是错的;其余 17 条维持原判(尺子稳定性优先,不为抬分放宽)。expect 按文件级判定,命中任一即算中。改金标必须重跑 eval 并在教学 doc 记录新基线。2026-09-16 增 q19「cherry-pick 直合」——来源不是人工编题,是 `mr.py log` 从 query-log 挖的隐式正标签(真实 search→120s 内 memory_get 同一文件)。裁决:expect 只收 gerrit-workflow.md;claude-md-rules-details.md 虽然也讲 cherry-pick,但那是「叠错分支」的补救、不是「已推 change 直合」,答上去不对题 —— 同「指南第4章拒收」的口径,不因为它排第2就加进 expect。留档:该题正例置信只有 medium(单腿过线,bm25 16.1 / cos .45),是置信门的活样本,别为了让 eval 不报 ⚠️ 去调阈值。",
+  "note": "v1 已验收(2026-08-21,zihao 授权 CC 代裁,审计轨迹见教学 doc 实验1节)。裁决:仅 q9 expect 加档 教学doc(其 §4 是'三方法怎么手搓'的正面答案,语料演化产生的第二真源);指南第4章拒收——它的'三'是 MCP 三原语(resources/tools/prompts),不是 stdio 三方法(initialize/tools/list/tools/call),答上去是错的;其余 17 条维持原判(尺子稳定性优先,不为抬分放宽)。expect 按文件级判定,命中任一即算中。改金标必须重跑 eval 并在教学 doc 记录新基线。2026-09-16 增 q19「cherry-pick 直合」——来源不是人工编题,是 `mr.py log` 从 query-log 挖的隐式正标签(真实 search→120s 内 memory_get 同一文件)。裁决:expect 只收 gerrit-workflow.md;claude-md-rules-details.md 虽然也讲 cherry-pick,但那是「叠错分支」的补救、不是「已推 change 直合」,答上去不对题 —— 同「指南第4章拒收」的口径,不因为它排第2就加进 expect。留档:该题正例置信只有 medium(单腿过线,bm25 16.1 / cos .45),是置信门的活样本,别为了让 eval 不报 ⚠️ 去调阈值。2026-09-16 晚增 q20-q22——来源是 `mr.py mine-transcripts`(会话 transcript 里「用户问 X→同轮 agent 真读了文件 Y」的单文件轮),三条都是 2026-08-24/08-31/09-08 真问过的话,原样收,不润色。裁决:q20 挖出的标签只有宽表一个文件,人工核后加 prod-es-connection.md(其 §08-24 HK 日志断流 节正是答案,RAG 本来就排它第 2——标签比 RAG 窄的实例);q21 加 openapi-media-egress-whitelist.md(「出口白名单缺口」就是它的主题);q22 单真源。收的时候 q21 期望文件排第 8、q22 第 4,故意收现在答不好的,基线该掉就掉。q23「工具层做成 MCP 那些工具应该做」同批挖出(09-16 单文件轮,期望文件排第 5),真源是当天的学习记忆「追问:哪些工具该做 MCP」节,单真源。",
   "queries": [
     {"q": "端到端全绿但被测组件可能根本没被调用,怎么判真", "expect": ["轨迹评估vs端到端评估.md"]},
     {"q": "什么时候用 ReAct 什么时候用 pipeline", "expect": ["qc用pipeline还是react-20260814.md"]},
@@ -20,6 +20,10 @@
     {"q": "记忆库会不会越攒越脏,怎么维护", "expect": ["agentic-loop与文件记忆.md", "memory-rules.md"]},
     {"q": "1006 超时到底是谁的责任", "expect": ["openapi-timeout-1006-real-attribution.md"]},
     {"q": "死循环烧钱怎么防,agent 运行时故障有哪几类", "expect": ["指南第9章-AgentOps与生产化落地.md"]},
-    {"q": "cherry-pick 直合", "expect": ["gerrit-workflow.md"]}
+    {"q": "cherry-pick 直合", "expect": ["gerrit-workflow.md"]},
+    {"q": "HK 断流后你咋查的 hk的任务日志", "expect": ["prod-search-es-task-wide.md", "prod-es-connection.md"]},
+    {"q": "下一步该按 host 聚合查出口白名单缺口 1006 看看是不是我们网络线路要升级了", "expect": ["openapi-timeout-1006-real-attribution.md", "openapi-media-egress-whitelist.md"]},
+    {"q": "能不能在配置上让我一键切换bge-m3 model和bge-small-zh-v1.5", "expect": ["agent-study-plan.md"]},
+    {"q": "工具层做成 MCP  那些工具应该做 risk？", "expect": ["SDK选型是Harness选型-判据是出口网关方言和既有资产.md"]}
   ]
 }

@@ -8,6 +8,7 @@
   py -3.12 mr.py pull-model bge-m3              # 从 hf-mirror 拉某个预设模型的权重到 .cache/<名>/(可断点续传);重排模型同理 pull-model bge-reranker-base
   py -3.12 mr.py eval --rerank bge-reranker-base   # 第三级重排(cross-encoder)对照;进程默认用 MR_RERANK=<预设>
   py -3.12 mr.py log [--days 7] [--src mcp]     # 查询日志汇总:0 命中的问题 + search→get 隐式正标签挖成金标候选
+  py -3.12 mr.py mine-transcripts [--days 0] [--multi] [--show-easy]   # 从 CC 会话 transcript 挖「问了 X→真读了文件 Y」,按现在 RAG 的名次排难度,只给答不好的
   embedding 模型一键切换:--model(单次)/ 环境变量 MR_EMBED_MODEL(进程默认,MCP 用这个)/ memory_search(model=)(单次查询)
 """
 import argparse
@@ -301,6 +302,11 @@ if __name__ == "__main__":
     p = sub.add_parser("log")            # 查询日志汇总 + 金标候选(search→get 隐式正标签)
     p.add_argument("--days", type=int, default=7)
     p.add_argument("--src", default="mcp", choices=["mcp", "cli", "all"])
+    p = sub.add_parser("mine-transcripts")   # query-log 只记经过 RAG 的流量(11 次);transcript 才是真实日志(直接读语料 477 次)
+    p.add_argument("--days", type=int, default=0, help="只挖近 N 天的用户轮;0=全部")
+    p.add_argument("--multi", action="store_true", help="也收一轮读了多个语料文件的轮(默认只收单文件轮,多文件轮里大半是干活的工具性阅读)")
+    p.add_argument("--show-easy", action="store_true", help="连现在已经排 ≤3 名的也打印")
+    p.add_argument("--out", default=None, help="全部候选(含名次)落盘路径,默认 .cache/mined-transcripts.json")
     p = sub.add_parser("pull-model")
     p.add_argument("name", help="预设名或短名:bge-small-zh-v1.5|bge-m3|Qwen3-Embedding-0.6B|small|m3|qwen3")
     sub.add_parser("pdf-extract")   # 把教材 PDF 按页抽文本进 .cache/pdf-text(一次 10 分钟),之后 MR_PDF=1 秒开
@@ -318,6 +324,9 @@ if __name__ == "__main__":
         cmd_eval(a.mode, a.v, a.golden, a.model, a.rerank)
     elif a.cmd == "log":
         cmd_log(a.days, a.src)
+    elif a.cmd == "mine-transcripts":
+        import mr_mine
+        mr_mine.main(a.days, a.multi, a.show_easy, a.out)
     elif a.cmd == "pull-model":
         sys.exit(0 if cmd_pull_model(a.name) else 1)
     elif a.cmd == "pdf-extract":

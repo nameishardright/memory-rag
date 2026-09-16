@@ -1,8 +1,8 @@
 # memory-rag
 
-**A personal-memory RAG that gives my AI coding agent long-term recall** — hybrid retrieval (BM25 + dense vectors + reciprocal-rank fusion) over three corpora of engineering notes, exposed to Claude Code through a custom [MCP](https://modelcontextprotocol.io) server, and held to a golden-set evaluation: **19/19 recall, MRR 0.846** across 1,923 chunks.
+**A personal-memory RAG that gives my AI coding agent long-term recall** — hybrid retrieval (BM25 + dense vectors + reciprocal-rank fusion) over three corpora of engineering notes, exposed to Claude Code through a custom [MCP](https://modelcontextprotocol.io) server, and held to a golden-set evaluation: **23/23 recall, MRR 0.806** across 1,938 chunks.
 
-![Python](https://img.shields.io/badge/Python-3.12-blue) ![Retrieval](https://img.shields.io/badge/retrieval-BM25%20%2B%20bge%20%2B%20RRF-orange) ![MCP](https://img.shields.io/badge/protocol-MCP-8A2BE2) ![Eval](https://img.shields.io/badge/golden%20eval-19%2F19%20·%20MRR%20.846-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.12-blue) ![Retrieval](https://img.shields.io/badge/retrieval-BM25%20%2B%20bge%20%2B%20RRF-orange) ![MCP](https://img.shields.io/badge/protocol-MCP-8A2BE2) ![Eval](https://img.shields.io/badge/golden%20eval-23%2F23%20·%20MRR%20.806-brightgreen)
 
 > Why: an AI agent forgets everything between sessions. I keep three growing bodies of notes — hard-won incident lessons, textbook study notes, and the agent's own long-term memory files. This project turns them into a retrieval service the agent queries *before* repeating a mistake I already paid for.
 
@@ -27,7 +27,7 @@ flowchart LR
 
 ## What's interesting about it
 
-**Evaluation as the acceptance gate.** A 19-query golden set (`golden/golden_queries.json`, expectations judged at file level) is versioned in the repo and treated like a test suite: the current baseline is **hybrid 19/19, MRR 0.846 (1,923 chunks, 2026-09-16)**; BM25-only holds 18/19 but its MRR decays as the corpus grows (.852 at 937 chunks → .800 at 1,923), which is exactly what the dense leg is there to absorb — fusion held .835 → .838 over the same +5.7% of chunks. q19 is the first entry the project did not write by hand: `mr.py log` mines the query log for *implicit positives* (a real `memory_search` followed within 120 s by a `memory_get` of one of its hits) and emits them as ready-to-curate golden entries. Curation still rejected the second-ranked file — it discusses the same command for a different purpose — and the entry is kept even though it is the one positive the confidence gate only labels `medium`, because a ruler that only contains questions the system already answers confidently measures nothing. Any change to the golden set requires re-running the eval and recording a new baseline — the ruler stays stable even when a higher score is tempting.
+**Evaluation as the acceptance gate.** A 23-query golden set (`golden/golden_queries.json`, expectations judged at file level) is versioned in the repo and treated like a test suite: the current baseline is **hybrid 23/23, MRR 0.806 (1,938 chunks, 2026-09-16)**; BM25-only holds 22/23 but its MRR decays as the corpus grows (.852 at 937 chunks → .800 at 1,938), which is exactly what the dense leg is there to absorb — fusion held .835 → .838 over the same +5.7% of chunks. Five of the 23 entries were not written by hand — and the MRR *fell* from .846 to .806 when they came in, on purpose: they are real questions the retriever answered poorly. q19 came from `mr.py log` mines the query log for *implicit positives* (a real `memory_search` followed within 120 s by a `memory_get` of one of its hits) and emits them as ready-to-curate golden entries. Curation still rejected the second-ranked file — it discusses the same command for a different purpose — and the entry is kept even though it is the one positive the confidence gate only labels `medium`, because a ruler that only contains questions the system already answers confidently measures nothing. Any change to the golden set requires re-running the eval and recording a new baseline — the ruler stays stable even when a higher score is tempting.
 
 **Cold-start profiling, then fixing the right leg.** First query used to take 35.5s. Per-stage timing showed **88% was `import torch`** (31.4s of Windows DLL loading) — model load was 0.1s and a warm query 0ms. Fix: the MCP server does a *staged main-thread warm-up* right after answering the protocol handshake, cutting the first in-session query from **35s to 0.45s**. (A background-thread import was tried and rejected: the GIL contention made it ~2× slower.)
 
@@ -63,9 +63,17 @@ claude mcp add --scope user rh-memory -- py -3.12 <path>/mr_mcp_server.py
 | `mr_index.py` | BM25 + dense index, md5-incremental embedding cache |
 | `mr_tools.py` | Shared search/fusion logic for CLI and MCP |
 | `mr_mcp_server.py` | MCP server with staged warm-up |
-| `golden/golden_queries.json` | 18-query golden eval set (v1, accepted) |
+| `golden/golden_queries.json` | 23-query golden eval set (18 hand-written + 5 mined from real usage) |
+| `mr_mine.py` | Mines Claude Code session transcripts for implicit positives, ranks them against the live retriever |
 
 The corpora themselves are personal notes and are **not** included; the golden set documents the retrieval contract. Original operational notes (Chinese): [`docs/ops-notes.zh.md`](docs/ops-notes.zh.md).
+
+### Mining the golden set from real usage (2026-09-16)
+
+- **The project's own query log was the wrong place to look.** `.cache/query-log.jsonl` only sees traffic that goes through the MCP server: across 865 Claude Code sessions / 2,366 user turns, `memory_search`/`memory_get` were called **11 times**, while the agent read the same corpus files directly (`Read`/`cat`/`grep`) **477 times**. A silent instrument can mean “no problem” or “nobody uses it”, and the two look identical. The session transcripts are the real log.
+- `py -3.12 mr.py mine-transcripts [--days N] [--multi]` walks the transcripts and emits *implicit positives* — a user turn followed, in the same turn, by the agent reading exactly one corpus file — the same shape as the query log's search→get pairs. Three systematic false positives are filtered before anything is shown: files read because a standing rule says so (not because they answer the question), turns that read several files while *doing* work (N−1 of those are tooling reads, so single-file turns only by default), and labels that are simply worse than the retriever's own top hit.
+- **Candidates are ranked against the live retriever before a human sees them.** Entries the system already answers at rank ≤3 are dropped (adding them only inflates the score); only misses and rank 4–10 are shown, as ready-to-curate JSON. 419 raw pairs → 19 question-shaped single-file candidates → 11 worth reading → 4 accepted (q20–q23). Two of the four turned out to be cases where the retriever was right and the mined label was too narrow; curation added the second true source rather than penalising the retriever.
+- Mined candidates are checked against the existing sets first: the one “zero-hit negative” the query log produced was already in `golden_negative.json` — an echo of the run that built it.
 
 ### Hot reload & optional PDF source (2026-09-08)
 
