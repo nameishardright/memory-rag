@@ -12,7 +12,7 @@ memory_search(query="cherry-pick 直合")
 memory_get(file="<搜索返回的 file>", source="mem", heading="<搜索返回的 heading>")
 ```
 
-`heading` 精确选择一个完整 Markdown 段落；找不到或有多个同名段落时明确报错，省略它可读全文。PDF 仍用 `file="书名.pdf#p81"` 取该页及相邻页。
+`heading` 先精确匹配，再接受唯一前缀；省略 `(1)` 后缀后若仍唯一，会返回实际完整标题。找不到或有多个候选时，错误中给出 `candidates` 与 `candidate_count`；不会静默只取第一片。省略 heading 可读全文。PDF 仍用 `file="书名.pdf#p81"` 取该页及相邻页。
 
 Hybrid 先融合文件排名，再在同文件的两路候选中选择正文。只有索引行时保留定位结果并标记 `evidence_kind="navigation"`。启用 gate 且当前结果均未达到 high 时，只对评分低于原有相关性下限的代表块补评同文件的一段词法正文；替代段落达到原有下限才替换，文件排名不变。已经达到 medium 的答案段落不会被高分主题概述挤走。这避免文件对另一主题的投票把已有答案的置信标签拉成 low。`snippet` 仍是预览，操作前应读完整段落，涉及历史变更时再核对全文中的后续更正。
 
@@ -21,6 +21,8 @@ Hybrid 先融合文件排名，再在同文件的两路候选中选择正文。�
 ## 评测内容的用途标签
 
 `corpus-policy.json` 保存明确的文档和段落用途。评测复盘用 `purpose="evaluation"`，默认在 BM25 和向量召回前排除；纯教学正文保持可检索。混合文档可用 `sections[].heading_prefix` 只标记运行报告部分，覆盖该标题的所有硬切分块。
+
+PDF 的演示/评测页放在 `pdf_pages` 扩展中；`p2` 只匹配该页及其分片，不匹配 p20。旧进程忽略此扩展，不会因热读新配置而报来源错误；重新连接后才启用 PDF 页标签。
 
 新评测笔记可在 frontmatter 顶层写入：
 
@@ -39,6 +41,10 @@ memory_search(query="分数门的阴性对照复盘", source="case", include_eva
 ```
 
 返回内容会显示 `purpose="evaluation"` 并提醒其样例问题未必有事实答案。`memory_get` 仍可主动读取这些文档。过滤只依赖用途标签，不根据天气、菜谱等问题做黑名单，也不读取 golden 标签；尚未标记的新增评测材料仍需补标签。金标题目、答案标签和结果报告应保留在本仓 `golden/`、隔离的评测目录，不加入普通事实语料。
+
+**自动验收检查**：`mr.py eval` 在预热模型和输出质量成绩前，扫描全部已装载来源，并检查本仓 `golden/*.json` 以及本次额外题集。任何未标 `evaluation` 的块，只要文件名、标题或正文逐字包含金标原问句，就以非零状态退出，列出位置。`mr.py audit-corpus` 可单独运行，不加载向量或重排模型；`MR_PDF=1` 时也扫描 PDF。配对验证脚本对冻结的笔记/股票与 PDF 快照都执行此检查。
+
+这条检查不依赖已知文件名单，未列出的新复盘也会失败；但它只检测已知原问句，改写、仅语义相近或没有运行评测时仍可能漏检。它负责阻止漏标后的静默验收，不是自动语义分类器；用途标签仍需在写作或复核时明确设置。
 
 ## 分开衡量文件命中与答案段落
 
@@ -61,6 +67,7 @@ memory_search(query="分数门的阴性对照复盘", source="case", include_eva
 
 ```powershell
 py -3.12 -X utf8 -m unittest discover -s tests -v
+py -3.12 -X utf8 mr.py audit-corpus
 py -3.12 -X utf8 mr.py eval --mode hybrid -v
 py -3.12 -X utf8 mr.py eval --mode hybrid --golden golden/golden_evidence.json --rerank bge-reranker-base -v
 py -3.12 -X utf8 mr.py eval --mode hybrid --golden golden/golden_negative.json --rerank bge-reranker-base -v
@@ -76,6 +83,17 @@ py -3.12 -X utf8 scripts/verify_mcp.py --cache .cache/verification/mcp-embedding
 第二条启动真实 stdio MCP 子进程，验证 `initialize`、`tools/list`、股票搜索和取文、直合答案段落、天气/菜谱置信以及评测笔记的主动访问。只关闭测试自己启动的进程。
 
 `MR_CACHE_DIR` 可隔离 embedding 和查询日志的写入，模型权重仍从原 `.cache/` 或 `MR_MODELS_DIR` 读取。验证脚本关闭查询日志和模型联网下载。两版共享本地模型和相同查询的结果缓存，因此这些输出用于质量对照，不作为性能基准。其他会话可能继续写笔记，报告会记录实时语料是否变化；配对比较始终使用同一份冻结语料。
+
+需要生成交付报告时，先将单测记录为 JSON：
+
+```powershell
+py -3.12 -X utf8 scripts/verify_unit.py --output <本轮结果目录>/unit-results.json
+py -3.12 -X utf8 scripts/make_report.py --run-dir <本轮结果目录>
+```
+
+结果目录还应包含 `verified-results.json`、`mcp-results.json` 和原题 SHA 对照 `integrity-results.json`。生成器核对通过状态、被测文件 SHA，以及真实 Git HEAD/工作树；没有提交或尚有未提交文件时拒绝生成“已交付”报告。输出应在仓外或被忽略的结果目录。实时语料变动直接写成“运行期间实时语料发生了变化”，不再打印双重否定布尔值。原 2026-09-17 报告保留其当时的数值，并补记对应已提交基线。
+
+MCP 验证另外记录新进程首查和六次串行暖查询的总耗时、rerank 耗时与 pairs，并与明确预算比较。应等配对质量检查完成后再运行它，以免把本机并发测量混在一起。性能预算未达标会单独列为待办，不计入功能通过数；详见 [后续实验与验收条件](next-experiments.zh.md)。
 
 ## 让已有会话使用新代码
 

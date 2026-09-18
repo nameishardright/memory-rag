@@ -23,7 +23,7 @@ class EvaluationContractTests(unittest.TestCase):
             golden = Path(directory) / "golden.json"
             golden.write_text(json.dumps({"queries": [{"q": "query", "expect": ["right.md"]}]}), encoding="utf-8")
             output = io.StringIO()
-            with patch.object(mr_tools, "memory_search", return_value=response), patch.object(mr_tools, "LOG_ON", False), contextlib.redirect_stdout(output):
+            with patch.object(mr_tools, "memory_search", return_value=response), patch.object(mr_tools, "_ensure", return_value={"chunks": []}), patch.object(mr_tools, "LOG_ON", False), contextlib.redirect_stdout(output):
                 mr.cmd_eval("bm25", False, str(golden), rerank=False)
             self.assertIn("returned@5 0/1", output.getvalue())
             self.assertIn("document@5 1/1", output.getvalue())

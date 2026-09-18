@@ -110,6 +110,8 @@ def main():
         stack.index.Reranker = reranker_factory
 
     chunks = after.corpus.load_chunks()
+    all_goldens = mr_eval.load_goldens(CODE / "golden")
+    report["corpus_audit"] = mr_eval.require_clean_corpus(chunks, all_goldens)
     live_signature = after.corpus.signature()
 
     def freeze(rows):
@@ -140,7 +142,7 @@ def main():
                 cached[version][key] = stack.tools.memory_search(q, **kwargs)
             return cached[version][key]
 
-        result = mr_eval.evaluate(golden, search, mode, model, rerank)
+        result = mr_eval.evaluate(golden, search, mode, model, rerank, chunks=stack.tools._STATE.get("chunks", active_chunks))
         report["runs"][version][label] = safe_report(result)
         print(json.dumps({"version": version, "suite": label, **result["summary"]}, ensure_ascii=False), flush=True)
         for row in result["rows"]:
@@ -150,6 +152,7 @@ def main():
                                           for h in row["hits"][:3]]}, ensure_ascii=False), flush=True)
         save()
 
+    active_chunks = chunks
     for version in ("before", "after"):
         for prefix, file in (("notes", "golden_queries.json"), ("stock", "golden_stock.json")):
             for mode in ("bm25", "vec", "hybrid"):
@@ -161,7 +164,7 @@ def main():
     note_idx = [i for i, c in enumerate(chunks) if c["source"] in {"case", "book", "mem"}]
     before.tools._STATE["bm25"] = before.tools._SubBM25(chunks, note_idx)
     golden = json.loads((CODE / "golden" / "golden_queries.json").read_text(encoding="utf-8"))
-    report["isolated_statistics_only"] = safe_report(mr_eval.evaluate(golden, before.tools.memory_search, rerank=False))
+    report["isolated_statistics_only"] = safe_report(mr_eval.evaluate(golden, before.tools.memory_search, rerank=False, chunks=chunks))
     before.tools._STATE["bm25"] = old_bm25
     print(json.dumps({"isolated_statistics_only": report["isolated_statistics_only"]["summary"]}, ensure_ascii=False), flush=True)
     if not args.quick:
@@ -177,7 +180,9 @@ def main():
             if entry.get("size") != stat.st_size or int(entry.get("mtime", -1)) != int(stat.st_mtime):
                 raise RuntimeError("PDF extraction cache is stale")
         pdf_chunks = after.corpus.load_pdf_chunks()
+        report["pdf_corpus_audit"] = mr_eval.require_clean_corpus(pdf_chunks, all_goldens)
         report["pdf_corpus_sha256"] = freeze(pdf_chunks)
+        active_chunks = pdf_chunks
         report["pdf_chunks"] = len(pdf_chunks)
         cached = {"before": {}, "after": {}}
         for version in ("before", "after"):
@@ -187,6 +192,7 @@ def main():
         return report["runs"][version][label]["summary"]
 
     checks = report["checks"]
+    checks["corpus_audit_passed"] = report["corpus_audit"]["ok"] and (args.quick or report["pdf_corpus_audit"]["ok"])
     checks["no_fallbacks"] = all(not r["summary"]["fallbacks"] for runs in report["runs"].values() for r in runs.values())
     checks["notes_hit5_preserved"] = summary("after", "notes_hybrid")["returned_hit_at5"] >= summary("before", "notes_hybrid")["returned_hit_at5"]
     checks["notes_mrr_improved"] = summary("after", "notes_hybrid")["returned_mrr_at10"] > summary("before", "notes_hybrid")["returned_mrr_at10"]

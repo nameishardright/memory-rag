@@ -120,6 +120,45 @@ class ToolDeclarationTests(unittest.TestCase):
 
 
 class CorpusPolicyTests(unittest.TestCase):
+    def test_pdf_labels_apply_to_one_page_without_matching_page_twenty(self):
+        policy = {"version": 1, "documents": [], "pdf_pages": [
+            {"source": "pdf", "file": "guide.pdf", "heading_prefix": "p2", "purpose": "evaluation"}]}
+        self.policy.write_text(json.dumps(policy), encoding="utf-8")
+        pages = ["这是教材正文，保留足够字符以被抽取。" * 4 for _ in range(20)]
+        pdf = self.root / "guide.pdf"
+        pdf.touch()
+        with patch.object(mr_corpus, "pdf_files", return_value=[str(pdf)]), patch.object(mr_corpus, "extract_pdf", return_value=pages), patch.object(mr_corpus, "PDF_DIR", str(self.root)):
+            chunks = mr_corpus.load_pdf_chunks()
+            by_heading = {c["heading"]: c["purpose"] for c in chunks}
+            self.assertEqual(by_heading["p2"], "evaluation")
+            self.assertEqual(by_heading["p20"], "knowledge")
+            self.assertEqual(mr_tools.memory_get("guide.pdf#p2", source="pdf")["purpose"], "evaluation")
+
+    def test_unique_heading_prefix_returns_the_resolved_heading(self):
+        (self.root / "lesson.md").write_text("# 操作步骤  (1)\n完整的步骤。", encoding="utf-8")
+        result = mr_tools.memory_get("lesson.md", source="book", heading="操作步骤")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["heading"], "操作步骤  (1)")
+        self.assertEqual(result["text"], "完整的步骤。")
+
+    def test_ambiguous_heading_prefix_lists_candidates_instead_of_truncating(self):
+        (self.root / "lesson.md").write_text("# 操作步骤 (1)\n第一段。\n# 操作步骤 (2)\n第二段。", encoding="utf-8")
+        result = mr_tools.memory_get("lesson.md", source="book", heading="操作步骤")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["candidates"], ["操作步骤 (1)", "操作步骤 (2)"])
+        self.assertNotIn("text", result)
+
+    def test_exact_heading_wins_over_longer_prefix_matches(self):
+        (self.root / "lesson.md").write_text("# 操作步骤\n准确段落。\n# 操作步骤补充\n另一个段落。", encoding="utf-8")
+        result = mr_tools.memory_get("lesson.md", source="book", heading="操作步骤")
+        self.assertEqual(result["text"], "准确段落。")
+
+    def test_missing_heading_offers_available_headings(self):
+        (self.root / "lesson.md").write_text("# 操作步骤\n正文。", encoding="utf-8")
+        result = mr_tools.memory_get("lesson.md", source="book", heading="不存在")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["candidates"], ["操作步骤"])
+
     def test_frontmatter_followed_by_body_and_a_rule_is_still_body(self):
         c = chunk("mem", "note.md", "(开头)", "---\ndescription: 维护规则\n---\n写入、更新、删错。\n---")
         self.assertEqual(mr_corpus.evidence_kind(c), "body")

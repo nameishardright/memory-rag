@@ -2,11 +2,13 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import queue
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import threading
@@ -46,6 +48,7 @@ def main():
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     with (args.output.parent / "mcp-stderr.log").open("w", encoding="utf-8") as stderr:
+        process_started = time.perf_counter()
         process = subprocess.Popen([sys.executable, "-X", "utf8", "-u", str(CODE / "mr_mcp_server.py")],
                                    cwd=CODE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=stderr, text=True, encoding="utf-8")
@@ -96,6 +99,7 @@ def main():
             print("MCP initialize/tools-list: stock, evaluation scope and paragraph lookup declared", flush=True)
 
             found = call("memory_search", {"query": stock["queries"][0]["q"], "source": "stock", "mode": "bm25", "topk": 1, "rerank": False})
+            report["latency"] = {"first_search_ms": round((time.perf_counter() - process_started) * 1000, 2)}
             selected = found["hits"][0]
             checks["stock_search"] = selected["source"] == "stock"
             fetched = call("memory_get", {"file": selected["file"], "source": "stock"})
@@ -111,6 +115,8 @@ def main():
             report["pdf_result"] = {"mode": "bm25", "file": selected["file"], "page": page,
                                     "text_sha256": hashlib.sha256(fetched["text"].encode()).hexdigest()}
             print("MCP PDF search/get: page route verified (bge-m3 quality checked in paired suite)", flush=True)
+            example = call("memory_get", {"file": "从零开始构建智能体-Hello-Agents-V1.0.3.pdf#p423", "source": "pdf"})
+            checks["pdf_example_remains_accessible_and_labeled"] = example.get("purpose") == "evaluation"
 
             direct = next(q for q in evidence["queries"] if q["id"] == "passage-direct-submit")
             found = call("memory_search", {"query": direct["q"], "topk": 5, "rerank": False})
@@ -119,11 +125,14 @@ def main():
             fetched = call("memory_get", {"source": selected["source"], "file": selected["file"], "heading": selected["heading"]})
             checks["get_exact_answer_paragraph"] = (fetched["heading"] == selected["heading"] and
                 any(mr_eval.matches_passage(dict(fetched, snippet=fetched["text"]), label) for label in direct["evidence"]))
+            prefixed = call("memory_get", {"source": selected["source"], "file": selected["file"], "heading": selected["heading"][:-1]})
+            checks["get_unique_prefix"] = prefixed["heading"] == selected["heading"] and prefixed["text"] == fetched["text"]
             report["direct_submit"] = {"source": selected["source"], "file": selected["file"], "heading": selected["heading"],
                                         "snippet_sha256": hashlib.sha256(selected["snippet"].encode()).hexdigest()}
             print("MCP direct-submit search/get: answer paragraph verified", flush=True)
 
             report["negative_confidence"] = {}
+            suffix_hit = None
             for q in evidence["queries"]:
                 if q["expect"]:
                     continue
@@ -131,6 +140,7 @@ def main():
                 checks[q["id"] + "_low"] = found["confidence"] == "low"
                 checks[q["id"] + "_no_evaluation_hits"] = all(h["purpose"] != "evaluation" for h in found["hits"])
                 report["negative_confidence"][q["id"]] = {"confidence": found["confidence"], "gate": found["gate"]}
+                suffix_hit = suffix_hit or next((h for h in found["hits"] if h["source"] == "book" and re.search(r" \(\d+\)$", h["heading"])), None)
                 print("MCP %s: confidence=%s" % (q["id"], found["confidence"]), flush=True)
 
             for q in evidence["queries"]:
@@ -139,6 +149,44 @@ def main():
                 found = call("memory_search", {"query": q["q"], "source": q["source"], "include_evaluation": True,
                                                "topk": 5, "rerank": False})
                 checks[q["id"]] = any(h["file"] in q["expect"] and h["purpose"] == "evaluation" for h in found["hits"])
+            if suffix_hit is None:
+                found = call("memory_search", {"query": "向量 混合检索", "source": "book", "mode": "bm25", "topk": 10, "rerank": False})
+                suffix_hit = next((h for h in found["hits"] if re.search(r" \(\d+\)$", h["heading"])), None)
+            checks["get_suffix_sample_available"] = suffix_hit is not None
+            if suffix_hit:
+                prefix = re.sub(r" \(\d+\)$", "", suffix_hit["heading"]).rstrip()
+                reply = request("tools/call", {"name": "memory_get", "arguments": {
+                    "source": suffix_hit["source"], "file": suffix_hit["file"], "heading": prefix}})
+                data = json.loads(reply["content"][0]["text"])
+                checks["get_omitted_suffix_resolves_or_lists_candidates"] = (
+                    data.get("ok") and data.get("heading") == suffix_hit["heading"] or
+                    bool(reply.get("isError")) and suffix_hit["heading"] in data.get("candidates", []))
+                exact = call("memory_get", {"source": suffix_hit["source"], "file": suffix_hit["file"], "heading": suffix_hit["heading"]})
+                checks["get_suffix_exact_title_still_works"] = exact["heading"] == suffix_hit["heading"]
+
+            # Sequential warm observations with no result cache in this client.
+            # Run this verifier separately from the paired quality benchmark.
+            latency_rows = []
+            timed_cases = [direct] + [q for q in evidence["queries"] if not q["expect"]]
+            for q in timed_cases:
+                call("memory_search", {"query": q["q"], "topk": 5, "rerank": True})
+            for repeat in range(2):
+                for q in timed_cases:
+                    start = time.perf_counter()
+                    found = call("memory_search", {"query": q["q"], "topk": 5, "rerank": True})
+                    rr = found.get("rerank") or {}
+                    latency_rows.append({"id": q["id"], "repeat": repeat + 1,
+                                         "total_ms": round((time.perf_counter() - start) * 1000, 2),
+                                         "rerank_ms": rr.get("ms"), "pairs": rr.get("pairs"),
+                                         "extra_passages": rr.get("extra_passages", 0), "confidence": found["confidence"]})
+            elapsed = sorted(row["total_ms"] for row in latency_rows)
+            p50, p95 = statistics.median(elapsed), elapsed[math.ceil(.95 * len(elapsed)) - 1]
+            budget_ok = p50 <= 2000 and p95 <= 4000 and report["latency"]["first_search_ms"] <= 60000
+            report["latency"].update({"warm_samples": len(elapsed), "warm_p50_ms": round(p50, 2),
+                                      "warm_p95_ms": round(p95, 2), "samples": latency_rows,
+                                      "budget": {"warm_p50_ms": 2000, "warm_p95_ms": 4000, "first_search_ms": 60000},
+                                      "budget_status": "达标" if budget_ok else "未达标，性能优化待办"})
+            print(json.dumps({"latency": {k: v for k, v in report["latency"].items() if k != "samples"}}, ensure_ascii=False), flush=True)
             checks["code_unchanged_during_mcp_test"] = all(hashlib.sha256((CODE / name).read_bytes()).hexdigest() == digest for name, digest in report["code_sha256"].items())
             report["passed"] = all(checks.values())
             save()

@@ -38,13 +38,13 @@ def load_purposes():
     if policy.get("version") != 1:
         raise ValueError("corpus-policy.json: unsupported version")
     result = {}
-    for entry in policy["documents"] + policy.get("sections", []):
+    for entry in policy["documents"] + policy.get("sections", []) + policy.get("pdf_pages", []):
         key = (entry["source"], entry["file"])
         if "heading_prefix" in entry:
             if not isinstance(entry["heading_prefix"], str) or not entry["heading_prefix"].strip():
                 raise ValueError("corpus-policy.json: empty section prefix")
             key += (entry["heading_prefix"],)
-        if (key[0] not in {s["key"] for s in SOURCES} or
+        if (key[0] not in ({s["key"] for s in SOURCES} | {"pdf"}) or
                 os.path.basename(key[1]) != key[1] or entry["purpose"] not in PURPOSES or key in result):
             raise ValueError("corpus-policy.json: invalid or duplicate document label")
         result[key] = entry["purpose"]
@@ -66,8 +66,12 @@ def document_purpose(source, file, text, purposes):
 
 def chunk_purpose(source, file, heading, default, purposes):
     """Mixed teaching documents can label only their evaluation/report sections."""
+    def matches_prefix(prefix):
+        if source == "pdf":
+            return heading == prefix or heading.startswith(prefix + " (")
+        return heading.startswith(prefix)
     matches = [(len(key[2]), purpose) for key, purpose in purposes.items()
-               if len(key) == 3 and key[:2] == (source, file) and heading.startswith(key[2])]
+               if len(key) == 3 and key[:2] == (source, file) and matches_prefix(key[2])]
     return max(matches)[1] if matches else default
 
 
@@ -139,6 +143,7 @@ def extract_pdf(path, progress=None):
 
 def load_pdf_chunks():
     chunks = []
+    purposes = load_purposes()
     for path in pdf_files():
         fn = os.path.basename(path)
         for i, text in enumerate(extract_pdf(path, progress=lambda a, b, _f=fn: print("[pdf] %s %d/%d" % (_f, a, b), file=sys.stderr))):
@@ -150,6 +155,7 @@ def load_pdf_chunks():
                     "id": hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12],
                     "source": "pdf", "file": fn, "heading": h, "text": body,
                     "md5": chunk_key(fn, h, body),
+                    "purpose": chunk_purpose("pdf", fn, h, purposes.get(("pdf", fn), "knowledge"), purposes),
                 })
     return chunks
 

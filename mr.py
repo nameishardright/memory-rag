@@ -78,6 +78,11 @@ def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
         golden = json.load(f)
     modes = ["bm25", "vec", "hybrid"] if mode == "all" else [mode]
     mr_eval.validate_labels(golden)
+    # Audit every active source and every local golden before warming models or
+    # emitting retrieval scores, even when this run queries only one source.
+    chunks = mr_tools._ensure("bm25")["chunks"]
+    audit = mr_eval.require_clean_corpus(chunks, mr_eval.load_goldens(os.path.join(BASE, "golden"), golden_path))
+    print("CORPUS_AUDIT_OK: %d 块 / %d 个原问句" % (audit["scanned_chunks"], audit["question_count"]))
     print("金标 %d 条(draft=%s) | 模型 %s | 重排 %s | 检索评测,不是最终答案正确率" % (
         len(golden["queries"]), golden.get("draft"), mr_index.model_spec(model or (os.environ.get("MR_EMBED_MODEL_PDF") if golden.get("source") == "pdf" else None))["key"],
         ("%s(%s)" % (rr_name, mr_tools.RERANK_MODE)) if rr_name else "-"))
@@ -88,7 +93,7 @@ def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
         if probe["mode"].endswith("(fallback)") and m != "bm25":
             print("%-8s 跳过 — %s" % (m, probe["note"]))
             continue
-        report = mr_eval.evaluate(golden, mr_tools.memory_search, m, model, rerank)
+        report = mr_eval.evaluate(golden, mr_tools.memory_search, m, model, rerank, chunks=chunks)
         reports[m] = report
         s = report["summary"]
         if s["positives"]:
@@ -112,6 +117,13 @@ def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
                     print("    %s: returned=%s document=%s evidence=%s confidence=%s" % (
                         row["q"], row["returned_rank"], row["document_rank"], row["evidence_rank"], row["confidence"]))
     return reports
+
+
+def cmd_audit_corpus(golden_path=None):
+    audit = mr_eval.require_clean_corpus(mr_corpus.load_chunks(), mr_eval.load_goldens(os.path.join(BASE, "golden"), golden_path))
+    print("CORPUS_AUDIT_OK: %d 块 / %d 个原问句 / %d 个已标评测块" % (
+        audit["scanned_chunks"], audit["question_count"], audit["evaluation_chunks"]))
+    return audit
 
 
 def cmd_ranks(model=None):
@@ -271,6 +283,8 @@ if __name__ == "__main__":
     p.add_argument("--golden", default=None, help="金标文件,默认 golden/golden_queries.json;PDF 源用 golden/golden_pdf.json")
     p.add_argument("--model", default=None, help="同 search --model;只影响 vec/hybrid 两行")
     p.add_argument("--rerank", default=None, help="同 search --rerank")
+    p = sub.add_parser("audit-corpus", help="扫描全部已装载语料中的未标记金标问句,发现即失败")
+    p.add_argument("--golden", default=None, help="额外题集;始终同时检查本仓 golden/*.json")
     p = sub.add_parser("log")            # 查询日志汇总 + 金标候选(search→get 隐式正标签)
     p.add_argument("--days", type=int, default=7)
     p.add_argument("--src", default="mcp", choices=["mcp", "cli", "all"])
@@ -295,7 +309,17 @@ if __name__ == "__main__":
     elif a.cmd == "search":
         cmd_search(a.query, a.mode, a.topk, a.source, a.model, a.rerank, a.include_pdf, a.include_evaluation)
     elif a.cmd == "eval":
-        cmd_eval(a.mode, a.v, a.golden, a.model, a.rerank)
+        try:
+            cmd_eval(a.mode, a.v, a.golden, a.model, a.rerank)
+        except mr_eval.CorpusContaminationError as error:
+            print(error, file=sys.stderr)
+            sys.exit(2)
+    elif a.cmd == "audit-corpus":
+        try:
+            cmd_audit_corpus(a.golden)
+        except mr_eval.CorpusContaminationError as error:
+            print(error, file=sys.stderr)
+            sys.exit(2)
     elif a.cmd == "log":
         cmd_log(a.days, a.src)
     elif a.cmd == "mine-transcripts":

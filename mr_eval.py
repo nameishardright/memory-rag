@@ -3,9 +3,62 @@
 This module is consumed by evaluation only. Runtime retrieval never reads goldens.
 """
 import collections
+import json
+from pathlib import Path
 import re
 import time
 import unicodedata
+
+
+class CorpusContaminationError(ValueError):
+    def __init__(self, audit):
+        self.audit = audit
+        locations = ["  %s/%s :: %s" % (f["source"], f["file"], f["heading"]) for f in audit["findings"][:10]]
+        super().__init__("CORPUS_CONTAMINATION_FAIL: %d 个未标 evaluation 的块含金标原问句；先复核用途再评测。\n%s" % (
+            len(audit["findings"]), "\n".join(locations)))
+
+
+def load_goldens(directory, extra=None):
+    """Read evaluation-owned files only; retrieval never calls this function."""
+    paths = {p.resolve() for p in Path(directory).glob("*.json")}
+    if extra is not None:
+        paths.add(Path(extra).resolve())
+    return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(paths)]
+
+
+def require_clean_corpus(chunks, goldens):
+    """Fail on literal golden questions in any unmarked active corpus chunk.
+
+    All sources are inspected before query/source filtering. This detects known
+    question strings, not paraphrases, and never auto-labels or deletes content.
+    """
+    if chunks is None:
+        raise ValueError("A complete corpus snapshot is required for the contamination audit")
+    chunks = list(chunks)
+    goldens = [goldens] if isinstance(goldens, dict) else goldens
+    queries = set()
+    for golden in goldens:
+        for query in golden["queries"]:
+            q = query["q"]
+            if not isinstance(q, str) or not q.strip():
+                raise ValueError("Golden questions must be non-empty strings")
+            queries.add(q)
+    if not queries:
+        raise ValueError("No golden questions available for the corpus audit")
+    findings, labeled = [], 0
+    for chunk in chunks:
+        if chunk.get("purpose") == "evaluation":
+            labeled += 1
+            continue
+        indexed_text = "\n".join(chunk.get(key, "") for key in ("file", "heading", "text"))
+        matches = sorted(q for q in queries if q in indexed_text)
+        if matches:
+            findings.append({key: chunk.get(key) for key in ("source", "file", "heading", "id")} | {"queries": matches})
+    audit = {"ok": not findings, "scanned_chunks": len(chunks), "question_count": len(queries),
+             "evaluation_chunks": labeled, "findings": findings}
+    if findings:
+        raise CorpusContaminationError(audit)
+    return audit
 
 
 def _normal(text):
@@ -81,8 +134,9 @@ def validate_labels(golden):
             groups[group] = split
 
 
-def evaluate(golden, search, mode="hybrid", model=None, rerank=None):
+def evaluate(golden, search, mode="hybrid", model=None, rerank=None, *, chunks=None):
     validate_labels(golden)
+    audit = require_clean_corpus(chunks, [golden])
     rows = []
     for query in golden["queries"]:
         kwargs = dict(mode=mode, topk=10, source=query.get("source", golden.get("source")), model=model, rerank=rerank)
@@ -123,4 +177,4 @@ def evaluate(golden, search, mode="hybrid", model=None, rerank=None):
         "fallbacks": sum(r["mode"] != mode for r in rows),
         "mean_ms": round(sum(r["ms"] for r in rows) / len(rows), 2) if rows else None,
     }
-    return {"summary": summary, "rows": rows}
+    return {"summary": summary, "rows": rows, "corpus_audit": audit}

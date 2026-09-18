@@ -13,7 +13,23 @@
       "file": "2026-09-16-金标从真实日志来-自家埋点沉默不等于没人问.md",
       "purpose": "evaluation",
       "reason": "Golden-set mining and curation recap; examples describe test membership, not answers to those questions."
+    },
+    {
+      "source": "case",
+      "file": "2026-09-08-RAG第二路-同一套坑在第二个项目重现.md",
+      "purpose": "evaluation",
+      "reason": "Corpus audit found a literal negative query in a threshold-calibration comparison; reviewed 2026-09-18."
+    },
+    {
+      "source": "case",
+      "file": "重排模型当重排掉分-当置信门却是最强信号.md",
+      "purpose": "evaluation",
+      "reason": "Corpus audit found a literal negative query in a cross-encoder benchmark recap; reviewed 2026-09-18."
     }
+  ],
+  "pdf_pages": [
+    {"source": "pdf", "file": "从零开始构建智能体-Hello-Agents-V1.0.3.pdf", "heading_prefix": "p423", "purpose": "evaluation", "reason": "Weather-agent demo invokes a sample weather question; not a live weather observation. Explicit evaluation lookup or memory_get still accesses this page."},
+    {"source": "pdf", "file": "从零开始构建智能体-Hello-Agents-V1.0.3.pdf", "heading_prefix": "p428", "purpose": "evaluation", "reason": "Smithery usage demo contains a sample weather invocation; not a live weather observation. Only this example page is labeled."}
   ],
   "sections": [
     {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "v0 三方实测", "purpose": "evaluation", "reason": "Draft-golden comparison report with question and expected-file examples."},

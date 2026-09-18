@@ -75,8 +75,9 @@ def _rebuild(reason):
     pdf_idx = [i for i, c in enumerate(chunks) if c["source"] == "pdf"]
     _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx}
     _STATE["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认三源,统计不含 stock/评测复盘
-    _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_idx) if pdf_idx else None   # source=pdf
-    for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation"):
+    pdf_knowledge = [i for i in pdf_idx if chunks[i].get("purpose") != "evaluation"]
+    _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_knowledge) if pdf_idx else None
+    for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation", "bm25_pdf_evaluation"):
         _STATE.pop(key, None)   # 混合/PDF、股票原统计、含评测笔记的统计均按需重建
     for slug, v in list(_STATE.get("vecs", {}).items()):   # 每个已装的模型都增量重建:md5 缓存只算新块,模型实例复用
         _STATE["vecs"][slug] = mr_index.VecIndex(chunks, model=v._model, spec=v.spec)
@@ -168,6 +169,10 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         bm_index = st["bm25_all"]
     elif allowed == {"pdf"}:
         bm_index = st.get("bm25_pdf")
+        if include_evaluation:
+            if "bm25_pdf_evaluation" not in st:
+                st["bm25_pdf_evaluation"] = _SubBM25(chunks, st["idx"]["pdf"])
+            bm_index = st["bm25_pdf_evaluation"]
     elif allowed <= mr_corpus.NOTE_SOURCES:
         bm_index = st["bm25"]
         if include_evaluation:
@@ -345,7 +350,10 @@ def _memory_get(file, source=None, heading=None):
             return {"ok": False, "error": "页码越界:%s 共 %d 页" % (m.group(1), len(pages))}
         lo, hi = max(1, p - 1), min(len(pages), p + 1)
         text = "\n\n".join("── p%d ──\n%s" % (i, pages[i - 1]) for i in range(lo, hi + 1))
-        return {"ok": True, "source": "pdf", "file": m.group(1), "page": p, "pages": [lo, hi], "text": text}
+        purposes = mr_corpus.load_purposes()
+        purpose = mr_corpus.chunk_purpose("pdf", m.group(1), "p%d" % p,
+                                         purposes.get(("pdf", m.group(1)), "knowledge"), purposes)
+        return {"ok": True, "source": "pdf", "file": m.group(1), "page": p, "pages": [lo, hi], "text": text, "purpose": purpose}
     for src in mr_corpus.SOURCES:
         p = os.path.join(src["dir"], os.path.basename(file))   # basename 防目录穿越
         if os.path.isfile(p) and (not source or src["key"] == source):
@@ -356,11 +364,16 @@ def _memory_get(file, source=None, heading=None):
             purposes = mr_corpus.load_purposes()
             purpose = mr_corpus.document_purpose(src["key"], os.path.basename(file), text, purposes)
             if heading is not None:
-                blocks = [body for h in mr_corpus._split_heading(text) for head, body in mr_corpus._hard_wrap(*h)
-                          if head == heading]
-                if len(blocks) != 1:
-                    return {"ok": False, "error": "段落标题不存在或不唯一,请省略 heading 读取全文"}
-                text = blocks[0]
+                blocks = [block for h in mr_corpus._split_heading(text) for block in mr_corpus._hard_wrap(*h)]
+                requested = heading.strip()
+                matches = [block for block in blocks if block[0] == requested]
+                if not matches and requested:
+                    matches = [block for block in blocks if block[0].startswith(requested)]
+                if len(matches) != 1:
+                    candidates = list(dict.fromkeys(head for head, _ in (matches or blocks)))
+                    return {"ok": False, "error": "段落标题不存在或不唯一；请使用候选完整标题，或省略 heading 读取全文",
+                            "candidates": candidates[:10], "candidate_count": len(candidates)}
+                heading, text = matches[0]
                 purpose = mr_corpus.chunk_purpose(src["key"], os.path.basename(file), heading, purpose, purposes)
             result = {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text, "purpose": purpose}
             if heading is not None:
@@ -401,11 +414,11 @@ REGISTRY = {
     },
     "memory_get": {
         "fn": memory_get,
-        "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;可加 heading 精确取一个完整段落。",
+        "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;heading 优先精确匹配,唯一前缀也可;歧义时返回候选标题。",
         "schema": {"type": "object", "properties": {
             "file": {"type": "string", "description": "文件名,来自 memory_search 结果的 file 字段;教材原文写成「xxx.pdf#p81」取那一页 ±1"},
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
-            "heading": {"type": "string", "description": "可选,Markdown 命中的 heading 原样传入以取该段正文;省略则取全文。PDF 用 file 的 #p 页码"},
+            "heading": {"type": "string", "description": "可选,Markdown 标题优先精确匹配;唯一前缀可省略 (1) 等后缀,歧义或未找到时返回 candidates。省略则取全文;PDF 用 file 的 #p 页码"},
         }, "required": ["file"]},
     },
 }

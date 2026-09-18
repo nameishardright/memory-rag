@@ -76,6 +76,8 @@ Evaluation documents and report sections have explicit purpose labels in `corpus
 
 Commands, label format, split discipline and real MCP verification: [`docs/retrieval-evaluation.zh.md`](docs/retrieval-evaluation.zh.md). Existing MCP sessions need to reconnect to load code and schema changes.
 
+The 2026-09-18 follow-up makes corpus contamination a failing preflight in `eval` (also available as `audit-corpus`), supports unique heading prefixes with candidate suggestions, and records Git delivery state in the versioned report generator. Reports require a committed, clean worktree. Performance observations and remaining experiments are tracked separately in [`docs/next-experiments.zh.md`](docs/next-experiments.zh.md).
+
 ### Mining the golden set from real usage (2026-09-16)
 
 - **The project's own query log was the wrong place to look.** `.cache/query-log.jsonl` only sees traffic that goes through the MCP server: across 865 Claude Code sessions / 2,366 user turns, `memory_search`/`memory_get` were called **11 times**, while the agent read the same corpus files directly (`Read`/`cat`/`grep`) **477 times**. A silent instrument can mean “no problem” or “nobody uses it”, and the two look identical. The session transcripts are the real log.
