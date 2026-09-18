@@ -69,12 +69,15 @@ def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     chunks = mr_corpus.load_chunks()
     _STATE["chunks"] = chunks
-    notes_idx = [i for i, c in enumerate(chunks) if c["source"] != "pdf"]
+    notes_idx = [i for i, c in enumerate(chunks) if c["source"] in mr_corpus.NOTE_SOURCES]
+    ordinary_idx = [i for i in notes_idx if chunks[i].get("purpose") != "evaluation"]
+    nonpdf_idx = [i for i, c in enumerate(chunks) if c["source"] != "pdf"]
     pdf_idx = [i for i, c in enumerate(chunks) if c["source"] == "pdf"]
-    _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx}
-    _STATE["bm25"] = _SubBM25(chunks, notes_idx)                          # 默认三源
+    _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx}
+    _STATE["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认三源,统计不含 stock/评测复盘
     _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_idx) if pdf_idx else None   # source=pdf
-    _STATE.pop("bm25_all", None)                                          # include_pdf=True 时懒建
+    for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation"):
+        _STATE.pop(key, None)   # 混合/PDF、股票原统计、含评测笔记的统计均按需重建
     for slug, v in list(_STATE.get("vecs", {}).items()):   # 每个已装的模型都增量重建:md5 缓存只算新块,模型实例复用
         _STATE["vecs"][slug] = mr_index.VecIndex(chunks, model=v._model, spec=v.spec)
     _STATE["sig"] = mr_corpus.signature()
@@ -135,7 +138,8 @@ def _windows(c):
     return out or [head]
 
 
-def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None, rerank=None):
+def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None, rerank=None,
+                  include_evaluation=False):
     """model=None 时向量腿用进程默认模型(MR_EMBED_MODEL,默认 bge-small-zh-v1.5);传预设名可单次切换,见 mr_index.MODELS。
     🔴 按源选模型(2026-09-08 用户 GPU 对照,同一 3116 块):笔记金标 small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级),
        PDF 金标 small 11/12 .694 vs bge-m3 12/12 .917——截尾的代价取决于块长和答案位置:笔记按标题分段主题在段首,PDF 一页一块答案在页中任何位置。
@@ -151,20 +155,30 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     if source:
         allowed = {source}
     elif include_pdf:
-        allowed = None
+        allowed = mr_corpus.NOTE_SOURCES | {"pdf"}
     else:
         allowed = {"case", "book", "mem"}
-    keep = lambda i: allowed is None or chunks[i]["source"] in allowed   # noqa: E731
+    keep = lambda i: ((allowed is None or chunks[i]["source"] in allowed) and   # noqa: E731
+                      (include_evaluation or chunks[i].get("purpose") != "evaluation"))
+    mask = {i for i in range(len(chunks)) if keep(i)}
     # 掩码 = 允许的全局下标;BM25 用对应子集索引(统计不串),向量层用掩码(先掩后切)
-    if allowed is None:
+    if "pdf" in allowed and len(allowed) > 1:
         if "bm25_all" not in st:
             st["bm25_all"] = _SubBM25(chunks, list(range(len(chunks))))
-        bm_index, mask = st["bm25_all"], None
+        bm_index = st["bm25_all"]
     elif allowed == {"pdf"}:
-        bm_index, mask = st.get("bm25_pdf"), set(st["idx"]["pdf"])
-    else:
-        mask = {i for i in st["idx"]["notes"] if chunks[i]["source"] in allowed}
+        bm_index = st.get("bm25_pdf")
+    elif allowed <= mr_corpus.NOTE_SOURCES:
         bm_index = st["bm25"]
+        if include_evaluation:
+            if "bm25_evaluation" not in st:
+                st["bm25_evaluation"] = _SubBM25(chunks, st["idx"]["notes"])
+            bm_index = st["bm25_evaluation"]
+    else:
+        # stock 保持原来的全体非 PDF 统计;不能套用曾使股票金标退步的独立股票 IDF。
+        if "bm25_nonpdf" not in st:
+            st["bm25_nonpdf"] = _SubBM25(chunks, st["idx"]["nonpdf"])
+        bm_index = st["bm25_nonpdf"]
     K = 50
     bm = bm_index.search(query, topk=K, mask=mask) if bm_index else []
     leg_names, vl = None, None
@@ -220,13 +234,51 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
                     owner.append(j)
             ws = rk.score(query, pairs)
             scores = [max(sw for sw, o in zip(ws, owner) if o == j) for j in range(len(cand))]
+            hi, lo = rk.spec.get("hi"), rk.spec.get("lo")
+            extra_passages = 0
+            if (RERANK_MODE == "gate" and leg_names and hi is not None and lo is not None and
+                    scores and max(scores) < hi):
+                # A file's fused representative may cover a different aspect.
+                # Before labeling the query weak, score at most ONE lexical body
+                # from each already returned file/page. No new documents or
+                # excluded evaluation material can enter through this path.
+                def unit_key(i):
+                    c = chunks[i]
+                    return (c["source"], c["file"], c["heading"].split(" (")[0] if allowed == {"pdf"} else "")
+
+                lexical = {}
+                for i, _ in bm:
+                    if keep(i) and mr_corpus.evidence_kind(chunks[i]) == "body":
+                        lexical.setdefault(unit_key(i), i)
+                alternatives = [(j, lexical[unit_key(row[0])]) for j, row in enumerate(cand)
+                                if scores[j] < lo and unit_key(row[0]) in lexical and lexical[unit_key(row[0])] != row[0]]
+                extra, owners = [], []
+                for j, i in alternatives:
+                    for window in _windows(chunks[i]):
+                        extra.append(window)
+                        owners.append(j)
+                if extra:
+                    extra_scores = rk.score(query, extra)
+                    pairs.extend(extra)
+                    extra_passages = len(alternatives)
+                    replacements = {}
+                    for j, i in alternatives:
+                        score = max(s for s, owner_j in zip(extra_scores, owners) if owner_j == j)
+                        # Only rescue a below-floor passage. An already relevant
+                        # answer must not lose to a higher-scoring topic overview.
+                        if score >= lo:
+                            old = cand[j]
+                            cand[j] = (i,) + old[1:]
+                            scores[j] = score
+                            replacements[old[0]] = cand[j]
+                    ranked = [replacements.get(row[0], row) for row in ranked]
             if RERANK_MODE == "rerank":
                 order = sorted(range(len(cand)), key=lambda j: -scores[j])
                 ranked = [(cand[j][0], scores[j], (cand[j][2] if len(cand[j]) == 3 else None)) for j in order]
             else:   # gate:顺序不动,把分挂到对应块上
                 _rr_scores = {cand[j][0]: scores[j] for j in range(len(cand))}
             rr = {"model": rk.spec["key"], "mode": RERANK_MODE, "n": len(cand), "pairs": len(pairs), "top": round(max(scores), 3),
-                  "ms": int((time.time() - t0) * 1000)}
+                  "extra_passages": extra_passages, "ms": int((time.time() - t0) * 1000)}
             hi, lo = rk.spec.get("hi"), rk.spec.get("lo")
             if gate is not None and hi is not None and lo is not None:
                 lvl = "high" if rr["top"] >= hi else ("medium" if rr["top"] >= lo else "low")
@@ -244,7 +296,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             continue
         h = {"rank": len(hits) + 1, "score": round(float(score), 4),
              "source": c["source"], "file": c["file"], "heading": c["heading"],
-             "snippet": _snippet(c["text"], query)}
+             "snippet": _snippet(c["text"], query), "chunk_id": c["id"],
+             "purpose": c.get("purpose", "knowledge"), "evidence_kind": mr_corpus.evidence_kind(c)}
         if rr is not None:
             if rr["mode"] == "rerank":
                 h["rerank"] = round(float(score), 3)
@@ -261,20 +314,23 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     confidence = gate["level"] if gate else "high"
     if confidence == "low" and GATE_MODE == "drop":
         hits = []
+    if any(h["purpose"] == "evaluation" for h in hits):
+        note = (note + ";" if note else "") + "包含评测复盘:其中的样例问题不代表事实答案,请核对正文用途"
     _log({"tool": "search", "q": query, "mode": mode, "source": source, "model": used_model, "topk": topk, "n": len(hits),
           "top": ["%s#%s" % (h["file"], h["heading"]) for h in hits[:3]], "legs": [h.get("legs") for h in hits[:3]],
-          "confidence": confidence, "gate": gate, "rerank": rr, "note": note or None})
+          "confidence": confidence, "gate": gate, "rerank": rr, "note": note or None,
+          "include_evaluation": include_evaluation})
     return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "confidence": confidence,
             "gate": gate, "rerank": rr, "note": note, "hits": hits}
 
 
-def memory_get(file, source=None):
-    r = _memory_get(file, source)
+def memory_get(file, source=None, heading=None):
+    r = _memory_get(file, source, heading)
     _log({"tool": "get", "file": os.path.basename(file), "source": r.get("source") or source, "ok": r.get("ok")})
     return r
 
 
-def _memory_get(file, source=None):
+def _memory_get(file, source=None, heading=None):
     # PDF 原文:file 形如「Agentic-AI指南.pdf#p81」→ 回那一页 ±1 页(页码 Acrobat 1-indexed);缓存没建就现抽(首次几分钟)
     m = re.match(r"^(.+?\.pdf)(?:#p(\d+))?$", os.path.basename(file), re.I)
     if m:
@@ -297,8 +353,20 @@ def _memory_get(file, source=None):
                 text = f.read()
             if src["redact"]:
                 text = mr_corpus.redact(text)
-            return {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text}
-    return {"ok": False, "error": "三个语料目录都没有 %s(把 memory_search 结果里的 file 字段原样传)" % file}
+            purposes = mr_corpus.load_purposes()
+            purpose = mr_corpus.document_purpose(src["key"], os.path.basename(file), text, purposes)
+            if heading is not None:
+                blocks = [body for h in mr_corpus._split_heading(text) for head, body in mr_corpus._hard_wrap(*h)
+                          if head == heading]
+                if len(blocks) != 1:
+                    return {"ok": False, "error": "段落标题不存在或不唯一,请省略 heading 读取全文"}
+                text = blocks[0]
+                purpose = mr_corpus.chunk_purpose(src["key"], os.path.basename(file), heading, purpose, purposes)
+            result = {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text, "purpose": purpose}
+            if heading is not None:
+                result["heading"] = heading
+            return result
+    return {"ok": False, "error": "语料目录都没有 %s(把 memory_search 结果里的 file 字段原样传)" % file}
 
 
 REGISTRY = {
@@ -306,9 +374,11 @@ REGISTRY = {
         "fn": memory_search,
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
-                "mem(个人长期记忆);要教材原文页时 source=pdf(按页返回,笔记答「哪一章」更准,原文答「书上原话怎么说」)。查不到返回空 hits,也是正常结果;"
-                "confidence 是证据强度:high=词法和语义两条腿都过线;medium=只有一条腿过线(罕见词/英文问法常见,看 legs 自己判);low=两条腿都没过,语料里很可能没有,hits 只是最不差的凑数,别当依据。hybrid 模式每条带 legs(词法/语义两腿"
-                "各排第几,双腿都靠前=共识强);snippet 已对准命中词。引用前用 memory_get 看全文。"
+                "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
+                "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"
+                "low 表示证据不足,别硬凑。hybrid 每条带 legs(词法/语义名次);优先返回同文件正文,仅有索引块时标 evidence_kind=navigation。"
+                "snippet 是预览,引用前用 memory_get(file,source,heading) 看完整段落,或省略 heading 看全文。"
+                "评测复盘默认排除;检索评测方法/运行复盘时用 include_evaluation=true,结果会标 purpose=evaluation。"
                 "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
                 "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"
                 "③已知目标文件名就直接 memory_get,别绕检索。",
@@ -316,11 +386,13 @@ REGISTRY = {
             "query": {"type": "string", "description": "自然语言问题或关键词,中文为主"},
             "mode": {"type": "string", "enum": ["bm25", "vec", "hybrid"],
                      "description": "默认 hybrid;向量层没装会自动回退 bm25 并在 note 里说明"},
-            "topk": {"type": "integer", "description": "返回条数,默认 5,上限 10"},
-            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf"], "description": "可选,只查某一源。默认只查 case/book/mem;要教材**原文那一页**用 source=pdf(命中的 heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
+            "topk": {"type": "integer", "minimum": 1, "maximum": 10, "description": "返回条数,默认 5,上限 10"},
+            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"], "description": "可选,只查某一源。默认只查 case/book/mem;股票历史判断用 stock;教材原文用 pdf(heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
-            "rerank": {"type": "boolean", "description": "可选,是否用 cross-encoder 重排前 15 个候选(服务端 MR_RERANK 配了预设才生效;默认跟服务端);"
-                                                          "开了以后 score 是重排分(0-1),confidence 按重排分定"},
+            "include_evaluation": {"type": "boolean", "description": "默认 false,排除标记为 evaluation 的评测复盘;查评测方法/复盘时设 true。样例问题不等于事实答案"},
+            "rerank": {"anyOf": [{"type": "boolean"}, {"type": "string", "enum": list(mr_index.RERANKERS)}],
+                       "description": "可选,开关或 cross-encoder 预设名;默认跟 MR_RERANK。默认 gate 模式评分前 5 条;置信不足时每个文件最多补评一段词法正文,可换成证据更强的段落。文件顺序和 score 不变,另给 rerank 分与 confidence;"
+                                      "仅服务端 MR_RERANK_MODE=rerank 时评分前 15 条并按该分重排(候选数可由环境变量调整)"},
             "model": {"type": "string", "enum": list(mr_index.MODELS),
                       "description": "可选,向量腿用哪个 embedding 模型,单次切换;不传=服务端默认(MR_EMBED_MODEL,默认 bge-small-zh-v1.5;"
                                      "source=pdf 时默认走 MR_EMBED_MODEL_PDF,原文页上 bge-m3 明显更准)。"
@@ -329,10 +401,11 @@ REGISTRY = {
     },
     "memory_get": {
         "fn": memory_get,
-        "desc": "取某个笔记/记忆文件全文。memory_search 命中的片段不够看时,把 hits 里的 file 字段原样传入。",
+        "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;可加 heading 精确取一个完整段落。",
         "schema": {"type": "object", "properties": {
             "file": {"type": "string", "description": "文件名,来自 memory_search 结果的 file 字段;教材原文写成「xxx.pdf#p81」取那一页 ±1"},
-            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf"]},
+            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
+            "heading": {"type": "string", "description": "可选,Markdown 命中的 heading 原样传入以取该段正文;省略则取全文。PDF 用 file 的 #p 页码"},
         }, "required": ["file"]},
     },
 }

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "note": "Document-purpose labels only. Evaluation questions, labels and answer matching belong under golden/, never in retrieval logic. Evaluation notes remain available with include_evaluation=true or memory_get.",
+  "documents": [
+    {
+      "source": "case",
+      "file": "分数门在通用语料上只能标不能拒-阴性题会被自己的笔记污染.md",
+      "purpose": "evaluation",
+      "reason": "Retrieval-gate calibration and false-positive analysis; its example questions are not current factual evidence."
+    },
+    {
+      "source": "case",
+      "file": "2026-09-16-金标从真实日志来-自家埋点沉默不等于没人问.md",
+      "purpose": "evaluation",
+      "reason": "Golden-set mining and curation recap; examples describe test membership, not answers to those questions."
+    }
+  ],
+  "sections": [
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "v0 三方实测", "purpose": "evaluation", "reason": "Draft-golden comparison report with question and expected-file examples."},
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 2b 实测", "purpose": "evaluation", "reason": "Tokenizer/fusion ablation report and query-level error analysis."},
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 1 实测", "purpose": "evaluation", "reason": "Golden-answer curation and historical scores, not the referenced implementation procedure."},
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 3 实测", "purpose": "evaluation", "reason": "Inline-versus-retrieval evaluation report."},
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 6 实测", "purpose": "evaluation", "reason": "Hot-reload/PDF experiment results and corpus-size snapshots."}
+  ]
+}

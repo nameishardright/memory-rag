@@ -6,11 +6,13 @@ import math
 import os
 import re
 
+import mr_corpus
+
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")  # GFW:HuggingFace 走镜像
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-CACHE = os.path.join(BASE, ".cache")                                   # embedding 缓存 / PDF 文本
-MODELS_DIR = os.environ.get("MR_MODELS_DIR") or CACHE                    # 模型权重目录:<MODELS_DIR>/<模型名>/
+CACHE = os.environ.get("MR_CACHE_DIR") or os.path.join(BASE, ".cache")  # embedding / 查询日志;可隔离评测写入
+MODELS_DIR = os.environ.get("MR_MODELS_DIR") or os.path.join(BASE, ".cache")  # 模型权重独立于评测缓存
 
 # ── embedding 模型预设:一键切换(2026-09-08)──
 # 选谁:memory_search(model=) > 环境变量 MR_EMBED_MODEL > 默认 bge-small-zh-v1.5;键不分大小写,也认短名 small/m3/qwen3。
@@ -317,21 +319,21 @@ def rrf_files(chunks, rank_lists, k=60, topk=50, unit="file"):
     """文件级 RRF:先把每路 chunk 榜折成文件榜(取该文件最好名次),再融合——
     索引单元(chunk)和消费单元(文件)不一致时,融合必须发生在消费单元上。
     返回 [(代表chunk_idx, score, per_leg_ranks)];per_leg_ranks 与 rank_lists 对齐(0起,None=该腿没投)。
-    腿名次同时是置信信号:没有任何一条腿排进前3的文件多半是凑数——
-    「分差断崖」的机制版,比分数百分比阈值诚实(RRF 分数天然贴平,光看分看不出谁在凑)。"""
+    文件名次与代表段落独立:在两腿召回的同文件候选中优先正文,再按块级 RRF 选段。
+    保留只有导航块的命中供 memory_get 定位;不把文件排名或相关分当作答案正确率。"""
     # unit="page":PDF 源用,消费单元是「文件#页」而不是文件——一本书 700 页,按文件折叠就永远只出一页
     # 文档身份 = 源/文件名:三个语料目录各自独立,同名文件是两份文档,只按文件名折叠会把它们的票合并(2026-09-08 评审项④;当时跨源同名 0 个,潜伏)
     doc = lambda c: c["source"] + "/" + c["file"]   # noqa: E731
     key_of = (lambda c: doc(c) + "#" + c["heading"].split(" (")[0]) if unit == "page" else doc
-    file_rank_per_list, best_chunk = [], {}
+    file_rank_per_list, candidates = [], {}
     for lst in rank_lists:
         fr = {}
         for r, (i, _s) in enumerate(lst):
             f = key_of(chunks[i])
+            candidate_scores = candidates.setdefault(f, {})
+            candidate_scores[i] = candidate_scores.get(i, 0.0) + 1.0 / (k + r + 1)
             if f not in fr:
                 fr[f] = r
-                if f not in best_chunk:
-                    best_chunk[f] = i
         file_rank_per_list.append(fr)
     agg = {}
     for li, fr in enumerate(file_rank_per_list):
@@ -341,4 +343,8 @@ def rrf_files(chunks, rank_lists, k=60, topk=50, unit="file"):
             agg[f][0] += 1.0 / (k + r + 1)
             agg[f][1][li] = r
     ranked = sorted(agg.items(), key=lambda kv: -kv[1][0])[:topk]
+    best_chunk = {
+        f: max(candidates[f], key=lambda i: (mr_corpus.evidence_kind(chunks[i]) == "body", candidates[f][i]))
+        for f, _ in ranked
+    }
     return [(best_chunk[f], s, legs) for f, (s, legs) in ranked]

@@ -3,6 +3,7 @@
 设计决策与概念对应见 Desktop\\Agent学习计划\\notes\\第5-6周-毕业项目2.0-记忆RAG.md
 """
 import hashlib
+import json
 import os
 import re
 import sys
@@ -23,6 +24,64 @@ SOURCES = [
      "dir": os.environ.get("MR_STOCK_DIR") or os.path.join(HOME, r"Desktop\股票分析\cases\md"), "redact": True},
 ]
 DENY = {"MEMORY.md"}          # 纯索引,内容都在单文件里,入库只会造重复命中
+NOTE_SOURCES = frozenset({"case", "book", "mem"})
+PURPOSES = frozenset({"knowledge", "evaluation"})
+CORPUS_POLICY = os.environ.get("MR_CORPUS_POLICY") or os.path.join(BASE, "corpus-policy.json")
+
+
+def load_purposes():
+    """Explicit document-use labels; never infer them from a query or golden answers."""
+    if not os.path.isfile(CORPUS_POLICY):
+        return {}
+    with open(CORPUS_POLICY, encoding="utf-8") as f:
+        policy = json.load(f)
+    if policy.get("version") != 1:
+        raise ValueError("corpus-policy.json: unsupported version")
+    result = {}
+    for entry in policy["documents"] + policy.get("sections", []):
+        key = (entry["source"], entry["file"])
+        if "heading_prefix" in entry:
+            if not isinstance(entry["heading_prefix"], str) or not entry["heading_prefix"].strip():
+                raise ValueError("corpus-policy.json: empty section prefix")
+            key += (entry["heading_prefix"],)
+        if (key[0] not in {s["key"] for s in SOURCES} or
+                os.path.basename(key[1]) != key[1] or entry["purpose"] not in PURPOSES or key in result):
+            raise ValueError("corpus-policy.json: invalid or duplicate document label")
+        result[key] = entry["purpose"]
+    return result
+
+
+def document_purpose(source, file, text, purposes):
+    """A sidecar label overrides the optional top-level `rag_purpose` frontmatter key."""
+    purpose = "knowledge"
+    frontmatter = re.match(r"\A\ufeff?---\s*\n(.*?)\n---(?:\s*\n|\Z)", text, re.S)
+    if frontmatter:
+        label = re.search(r"^rag_purpose:\s*([\w-]+)\s*$", frontmatter[1], re.M)
+        if label:
+            purpose = label[1]
+            if purpose not in PURPOSES:
+                raise ValueError("Unknown rag_purpose in %s" % file)
+    return purposes.get((source, file), purpose)
+
+
+def chunk_purpose(source, file, heading, default, purposes):
+    """Mixed teaching documents can label only their evaluation/report sections."""
+    matches = [(len(key[2]), purpose) for key, purpose in purposes.items()
+               if len(key) == 3 and key[:2] == (source, file) and heading.startswith(key[2])]
+    return max(matches)[1] if matches else default
+
+
+def evidence_kind(chunk):
+    """Keep navigation searchable, but prefer an answer-bearing body in the same file."""
+    if chunk["heading"].startswith("索引行归档"):
+        return "navigation"
+    if chunk["heading"] == "(开头)":
+        lines = chunk["text"].strip().splitlines()
+        if lines and lines[0].lstrip("\ufeff").rstrip() == "---":
+            closing = next((i for i, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), None)
+            if closing is not None and not any(line.strip() for line in lines[closing + 1:]):
+                return "navigation"
+    return "body"
 
 # ── 第四源:教材 PDF 原文,按页切块,开关 MR_PDF=1(2026-09-08 用户定「PDF 源做成开关跑金标」)──
 # 笔记层(book)是蒸馏过的、带 ⭐ 页码,答「对应哪一章」更准;原文层是给「全面」用的。
@@ -98,6 +157,9 @@ def load_pdf_chunks():
 def signature():
     """语料指纹:所有源目录里 md 的 (名, mtime, size)+ 开着的 PDF 源 —— 变了就该重建索引(热更用)。"""
     parts = []
+    if os.path.isfile(CORPUS_POLICY):
+        st = os.stat(CORPUS_POLICY)
+        parts.append("policy|%s|%d|%d" % (CORPUS_POLICY, st.st_mtime_ns, st.st_size))
     for src in SOURCES:
         d = src["dir"]
         if not os.path.isdir(d):
@@ -160,6 +222,7 @@ def _hard_wrap(head, body):
 
 def load_chunks():
     chunks = []
+    purposes = load_purposes()
     for src in SOURCES:
         d = src["dir"]
         if not os.path.isdir(d):
@@ -176,11 +239,13 @@ def load_chunks():
                 continue
             if src["redact"]:
                 text = redact(text)
+            purpose = document_purpose(src["key"], fn, text, purposes)
             for head, body in (hb for h in _split_heading(text) for hb in _hard_wrap(*h)):
                 chunks.append({
                     "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
                     "source": src["key"], "file": fn, "heading": head, "text": body,
                     "md5": chunk_key(fn, head, body),
+                    "purpose": chunk_purpose(src["key"], fn, head, purpose, purposes),
                 })
     if pdf_enabled():
         chunks.extend(load_pdf_chunks())
