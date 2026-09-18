@@ -26,6 +26,7 @@ sys.path.insert(0, BASE)
 import mr_corpus
 import mr_tools  # noqa: E402
 import mr_index  # noqa: E402
+import mr_eval  # noqa: E402
 
 
 def cmd_stats():
@@ -58,9 +59,10 @@ def cmd_stats():
               "有" if os.path.exists(emb) else "无", sp["note"]))
 
 
-def cmd_search(q, mode, topk, source, model=None, rerank=None):
+def cmd_search(q, mode, topk, source, model=None, rerank=None, include_pdf=False, include_evaluation=False):
     t0 = time.time()
-    r = mr_tools.memory_search(q, mode=mode, topk=topk, source=source, model=model, rerank=rerank)
+    r = mr_tools.memory_search(q, mode=mode, topk=topk, source=source, model=model, rerank=rerank,
+                               include_pdf=include_pdf, include_evaluation=include_evaluation)
     print("[%s] tokenizer=%s model=%s rerank=%s conf=%s %.0fms  %s" % (r["mode"], r["tokenizer"], r.get("model") or "-",
           (r.get("rerank") or {}).get("model", "-"), r.get("confidence"), (time.time() - t0) * 1000, r["note"]))
     for h in r["hits"]:
@@ -74,73 +76,42 @@ def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
     rr_name = (mr_index.reranker_spec(rerank if isinstance(rerank, str) else None) or {}).get("key") if (rerank or os.environ.get("MR_RERANK")) else None
     with open(golden_path or os.path.join(BASE, "golden", "golden_queries.json"), encoding="utf-8") as f:
         golden = json.load(f)
-    qs = golden["queries"]
     modes = ["bm25", "vec", "hybrid"] if mode == "all" else [mode]
-    negative = bool(golden.get("negative"))
-    if negative:
-        print("阴性金标 %d 条 | 模型 %s | 重排 %s | 三级置信分布,理想 = low 多 high 少(MR_GATE=%s)" % (
-            len(qs), mr_index.model_spec(model)["key"], rr_name or "-", mr_tools.GATE_MODE))
-        for m in modes:
-            probe = mr_tools.memory_search("探针", mode=m, topk=1, model=model)
-            if probe["mode"].endswith("(fallback)") and m != "bm25":
-                print("%-8s 跳过 — %s" % (m, probe["note"]))
-                continue
-            dist, leaks = {"low": 0, "medium": 0, "high": 0}, []
-            for g in qs:
-                r = mr_tools.memory_search(g["q"], mode=m, topk=5, source=golden.get("source") or g.get("source"), model=model, rerank=rerank)
-                lv = "low" if not r["hits"] else r.get("confidence", "high")
-                dist[lv] += 1
-                if lv == "high":
-                    leaks.append((g["q"], r["hits"][0]["file"], r.get("gate")))
-            print("%-8s low %2d / medium %2d / high %2d  (共 %d)" % (m, dist["low"], dist["medium"], dist["high"], len(qs)))
-            if verbose:
-                for q, f, gate in leaks:
-                    print("    标成 high: %s -> %s  bm25 %s cos %s rerank %s" % (q, f, gate["bm25_max"], gate["cos_max"], gate.get("rerank_top")))
-        return
-    print("金标 %d 条(draft=%s) | 模型 %s | 重排 %s | recall@5=前5含期望文件 | MRR@10=首个命中名次倒数均值" % (
-        len(qs), golden.get("draft"), mr_index.model_spec(model)["key"], ("%s(%s)" % (rr_name, mr_tools.RERANK_MODE)) if rr_name else "-"))
-    print("%-8s %-9s %-7s %s" % ("mode", "recall@5", "MRR@10", "avg延迟"))
+    mr_eval.validate_labels(golden)
+    print("金标 %d 条(draft=%s) | 模型 %s | 重排 %s | 检索评测,不是最终答案正确率" % (
+        len(golden["queries"]), golden.get("draft"), mr_index.model_spec(model or (os.environ.get("MR_EMBED_MODEL_PDF") if golden.get("source") == "pdf" else None))["key"],
+        ("%s(%s)" % (rr_name, mr_tools.RERANK_MODE)) if rr_name else "-"))
+    print("returned@5/MRR:实际返回项;document@5/MRR:去重文件(历史口径);evidence:标题和预览内必需事实均匹配")
+    reports = {}
     for m in modes:
-        probe = mr_tools.memory_search("探针", mode=m, topk=1, model=model)
+        probe = mr_tools.memory_search("探针", mode=m, topk=1, source=golden.get("source"), model=model, rerank=False)
         if probe["mode"].endswith("(fallback)") and m != "bm25":
             print("%-8s 跳过 — %s" % (m, probe["note"]))
             continue
-        hit5, rr, t0, misses, flagged = 0, 0.0, time.time(), [], []
-        for g in qs:
-            r = mr_tools.memory_search(g["q"], mode=m, topk=10, source=golden.get("source") or g.get("source"), model=model, rerank=rerank)
-            files, seen = [], set()
-            for h in r["hits"]:
-                # 有 expect_pages 时按「文件#页」去重(同一本 PDF 不同页各算一条),否则按文件
-                key = h["file"] + ("#" + re.sub(r" \(\d+\)$", "", h["heading"] or "") if g.get("expect_pages") else "")
-                if key not in seen:
-                    seen.add(key)
-                    files.append((h["file"], h["heading"]))
-            # expect_pages=[lo,hi]:PDF 源用,命中文件还得页码落在区间(heading 形如 p81 / p81 (2))
-            def ok(f, head):
-                if f not in g["expect"]:
-                    return False
-                if g.get("expect_pages"):
-                    mm = re.match(r"p(\d+)", head or "")
-                    return bool(mm) and g["expect_pages"][0] <= int(mm.group(1)) <= g["expect_pages"][1]
-                return True
-            rank = next((i + 1 for i, (f, hd) in enumerate(files) if ok(f, hd)), None)
-            if rank and r.get("confidence") != "high":
-                flagged.append((g["q"], r.get("confidence"), r.get("gate")))
-            if rank and rank <= 5:
-                hit5 += 1
-            if rank:
-                rr += 1.0 / rank
-            else:
-                misses.append((g["q"], [f + "#" + (hd or "") for f, hd in files[:3]]))
-        n = len(qs)
-        print("%-8s %2d/%-6d %.3f   %4.0fms%s" % (m, hit5, n, rr / n, (time.time() - t0) * 1000 / n,
-                                                  ("   ⚠️ 正例不是 high 的 %d" % len(flagged)) if flagged else ""))
-        if verbose and flagged:
-            for q, lv, gate in flagged:
-                print("    %s: %s  bm25 %s cos %s rerank %s" % (lv, q, gate["bm25_max"], gate["cos_max"], gate.get("rerank_top")))
-        if verbose and misses:
-            for q, top in misses:
-                print("    miss: %s -> 实际top3=%s" % (q, top))
+        report = mr_eval.evaluate(golden, mr_tools.memory_search, m, model, rerank)
+        reports[m] = report
+        s = report["summary"]
+        if s["positives"]:
+            print("%-8s returned@5 %d/%d MRR %.3f | document@5 %d/%d MRR %.3f | %.0fms" % (
+                m, s["returned_hit_at5"], s["positives"], s["returned_mrr_at10"],
+                s["document_hit_at5"], s["positives"], s["document_mrr_at10"], s["mean_ms"]))
+        if s["evidence_labeled"]:
+            print("         evidence@1 %d/%d | evidence@5 %d/%d" % (
+                s["evidence_hit_at1"], s["evidence_labeled"], s["evidence_hit_at5"], s["evidence_labeled"]))
+        if s["negatives"]:
+            dist = s["negative_confidence"]
+            print("%-8s negative low %d / medium %d / high %d (共 %d)" % (
+                m, dist.get("low", 0), dist.get("medium", 0), dist.get("high", 0), s["negatives"]))
+        if s["fallbacks"]:
+            print("    ⚠️ %d 次回退,不能当作 %s 模式验收" % (s["fallbacks"], m))
+        if verbose:
+            for row in report["rows"]:
+                if ((row["positive"] and (not row["returned_rank"] or row["returned_rank"] > 5 or row["confidence"] != "high")) or
+                        (row["passage_labeled"] and (not row["evidence_rank"] or row["evidence_rank"] > 5)) or
+                        (not row["positive"] and row["confidence"] == "high")):
+                    print("    %s: returned=%s document=%s evidence=%s confidence=%s" % (
+                        row["q"], row["returned_rank"], row["document_rank"], row["evidence_rank"], row["confidence"]))
+    return reports
 
 
 def cmd_ranks(model=None):
@@ -291,6 +262,7 @@ if __name__ == "__main__":
     p.add_argument("--topk", type=int, default=5)
     p.add_argument("--source", default=None, choices=["case", "book", "mem", "pdf", "stock"])
     p.add_argument("--include-pdf", action="store_true")
+    p.add_argument("--include-evaluation", action="store_true", help="包含标为 evaluation 的评测复盘,用于检索评测方法和运行记录")
     p.add_argument("--model", default=None, help="embedding 模型预设名(bge-small-zh-v1.5 / bge-m3 / Qwen3-Embedding-0.6B 或短名 small/m3/qwen3)")
     p.add_argument("--rerank", default=None, help="重排预设名(bge-reranker-base / bge-reranker-v2-m3 或短名 base/v2-m3);不传跟 MR_RERANK")
     p = sub.add_parser("eval")
@@ -314,12 +286,14 @@ if __name__ == "__main__":
     p.add_argument("--model", default=None)
     p = sub.add_parser("get")           # 二段式第二步:search 定位→get 全文(别只吃 snippet,截断缝合教训)
     p.add_argument("file")
+    p.add_argument("--source", choices=["case", "book", "mem", "pdf", "stock"])
+    p.add_argument("--heading", help="精确取 search 命中的完整 Markdown 段落")
     sub.add_parser("setup-vec")
     a = ap.parse_args()
     if a.cmd == "stats":
         cmd_stats()
     elif a.cmd == "search":
-        cmd_search(a.query, a.mode, a.topk, a.source, a.model, a.rerank)
+        cmd_search(a.query, a.mode, a.topk, a.source, a.model, a.rerank, a.include_pdf, a.include_evaluation)
     elif a.cmd == "eval":
         cmd_eval(a.mode, a.v, a.golden, a.model, a.rerank)
     elif a.cmd == "log":
@@ -337,7 +311,7 @@ if __name__ == "__main__":
     elif a.cmd == "ranks":
         cmd_ranks(a.model)
     elif a.cmd == "get":
-        r = mr_tools.memory_get(a.file)
+        r = mr_tools.memory_get(a.file, a.source, a.heading)
         print(r["text"] if r.get("ok") else r.get("error"))
     elif a.cmd == "setup-vec":
         cmd_setup_vec()

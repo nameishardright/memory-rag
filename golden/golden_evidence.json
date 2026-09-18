@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "draft": false,
+  "split": "regression",
+  "note": "Passage labels checked against local source text on 2026-09-17. These known failures and added checks are development regressions, not an independent holdout. Original 59 questions and their labels remain unchanged. required_text must appear in the actual returned snippet; a correct filename alone cannot pass. Do not read this file from runtime retrieval or use these cases as held-out training evaluation.",
+  "queries": [
+    {
+      "id": "passage-direct-submit",
+      "case_group": "gerrit-direct-submit",
+      "q": "cherry-pick 直合",
+      "expect": ["gerrit-workflow.md"],
+      "evidence": [
+        {
+          "source": "mem",
+          "file": "gerrit-workflow.md",
+          "heading_contains": "直合 %submit",
+          "required_text": ["origin/release", "cherry-pick", "Change-Id", "%submit", "MERGED"]
+        }
+      ],
+      "hard_negatives": [
+        {"source": "mem", "file": "gerrit-workflow.md", "heading_contains": "索引行归档", "reason": "Navigation only; omits the operating sequence and conditions. Read the full file for subsequent dated corrections before operating."},
+        {"source": "mem", "file": "claude-md-rules-details.md", "heading_contains": "一需求一分支", "reason": "Repairs work placed on the wrong branch; does not answer how to submit an already pushed change."}
+      ]
+    },
+    {
+      "id": "passage-zero-traffic",
+      "case_group": "deployment-zero-traffic",
+      "q": "上线后没报错就说明代码稳吗",
+      "expect": ["零流量上线等于没验证.md"],
+      "evidence": [
+        {"source": "case", "file": "零流量上线等于没验证.md", "heading_contains": "零流量上线", "required_text": ["没报错", "分母", "真实流量"]}
+      ]
+    },
+    {
+      "id": "passage-fallback",
+      "case_group": "fallback-output",
+      "q": "兜底输出的原则,低质量 fallback 有什么危害",
+      "expect": ["兜底输出宁空别骗.md"],
+      "evidence": [
+        {"source": "case", "file": "兜底输出宁空别骗.md", "heading_contains": "兜底输出宁空别骗", "required_text": ["负面清单", "伪装成高置信答案", "宁可留空"]}
+      ]
+    },
+    {
+      "id": "passage-mcp-methods",
+      "case_group": "mcp-stdio-methods",
+      "q": "MCP 协议一共几个方法,怎么手搓",
+      "expect": ["第2周-实战-taskid分析agent.md", "第5-6周-毕业项目2.0-记忆RAG.md"],
+      "evidence": [
+        {"source": "book", "file": "第2周-实战-taskid分析agent.md", "heading_contains": "MCP server 怎么封装", "required_text": ["initialize", "tools/list", "tools/call"]},
+        {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_contains": "4. 接入", "required_text": ["initialize", "tools/list", "tools/call", "stdout"]}
+      ],
+      "hard_negatives": [
+        {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_contains": "v0 三方实测", "reason": "Draft-golden comparison table, not the implementation instructions."},
+        {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_contains": "实验 1 实测", "reason": "Golden-label curation report; the procedure is in the referenced implementation section."},
+        {"source": "book", "file": "指南第4章-工具使用与环境交互.md", "reason": "Its three primitives (resources/tools/prompts) are not this local stdio server's three implemented methods."}
+      ]
+    },
+    {
+      "id": "negative-weather",
+      "case_group": "weather-evaluation-contamination",
+      "q": "今天天气怎么样",
+      "expect": [],
+      "hard_negatives": [
+        {"source": "case", "file": "分数门在通用语料上只能标不能拒-阴性题会被自己的笔记污染.md", "reason": "Discusses this test question; contains no current local weather observation. A question mention is not an answer."}
+      ]
+    },
+    {
+      "id": "negative-recipe",
+      "case_group": "recipe-evaluation-contamination",
+      "q": "怎么做红烧肉才不腻",
+      "expect": [],
+      "hard_negatives": [
+        {"source": "case", "file": "2026-09-16-金标从真实日志来-自家埋点沉默不等于没人问.md", "heading_contains": "可复用的判据", "reason": "Says the query already belongs to the negative test set; provides no recipe."}
+      ]
+    },
+    {
+      "id": "evaluation-notes-still-searchable",
+      "case_group": "weather-evaluation-contamination",
+      "q": "分数门只能标不能拒，阴性题为什么会被自己的笔记污染",
+      "source": "case",
+      "include_evaluation": true,
+      "expect": ["分数门在通用语料上只能标不能拒-阴性题会被自己的笔记污染.md"]
+    },
+    {
+      "id": "evaluation-mining-still-searchable",
+      "case_group": "recipe-evaluation-contamination",
+      "q": "金标从真实日志来，自家埋点沉默不等于没人问",
+      "source": "case",
+      "include_evaluation": true,
+      "expect": ["2026-09-16-金标从真实日志来-自家埋点沉默不等于没人问.md"]
+    }
+  ]
+}
