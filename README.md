@@ -21,7 +21,7 @@ flowchart LR
     IDX1 --> F["File-level<br/>Reciprocal-Rank Fusion"]
     IDX2 --> F
     F --> CLI["CLI<br/>(search / get / stats / eval)"]
-    F --> MCP["MCP server<br/>(memory_search / memory_get)<br/>staged warm-up"]
+    F --> MCP["MCP server<br/>(memory_search / memory_get / memory_check_answer)<br/>staged warm-up"]
     MCP --> CC["Claude Code sessions"]
 ```
 

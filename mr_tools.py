@@ -13,6 +13,7 @@ import time
 
 import mr_corpus
 import mr_index
+import mr_stock
 
 _STATE = {}
 _LOCK = threading.Lock()   # MCP server 启动预热线程和首个查询会并发进来,不锁会撞半成品状态
@@ -201,7 +202,7 @@ def _windows(c, max_windows=None):
 
 
 def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, model=None, rerank=None,
-                  include_evaluation=False):
+                  include_evaluation=False, stock_filter=None):
     """model=None 时向量腿用进程默认模型(MR_EMBED_MODEL,默认 bge-small-zh-v1.5);传预设名可单次切换,见 mr_index.MODELS。
     🔴 按源选模型(2026-09-08 用户 GPU 对照,同一 3116 块):笔记金标 small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级),
        PDF 金标 small 11/12 .694 vs bge-m3 12/12 .917——截尾的代价取决于块长和答案位置:笔记按标题分段主题在段首,PDF 一页一块答案在页中任何位置。
@@ -209,6 +210,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     source=None 时默认只查 case/book/mem 三源;PDF 原文(要 MR_PDF=1 装载)只有 source="pdf" 或 include_pdf=True 才参与。
     🔴 为什么按查询开关而不是全混:2026-09-08 实测把 1296 页原文混进默认检索,主金标 hybrid 18/18→17/18、MRR .835→.750——
     原文页把带 ⭐ 页码的笔记挤下去;而 source=pdf 单独查,原文页 9/12 能找到。两层开关:环境变量管装不装,参数管查不查。"""
+    if stock_filter is not None and source != "stock":
+        raise ValueError("stock_filter requires source=stock")
     if model is None and source == "pdf":
         model = os.environ.get("MR_EMBED_MODEL_PDF") or None
     st = _ensure(mode, model, vec_scope='pdf') if source == 'pdf' else _ensure(mode, model)
@@ -220,8 +223,11 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         allowed = mr_corpus.NOTE_SOURCES | {"pdf"}
     else:
         allowed = {"case", "book", "mem"}
+    stock_scope = (mr_stock.query_filter(query, {c["file"] for c in chunks if c["source"] == "stock"}, stock_filter)
+                   if source == "stock" else {})
     keep = lambda i: ((allowed is None or chunks[i]["source"] in allowed) and   # noqa: E731
-                      (include_evaluation or chunks[i].get("purpose") != "evaluation"))
+                      (include_evaluation or chunks[i].get("purpose") != "evaluation") and
+                      (not stock_scope or mr_stock.matches(chunks[i]["file"], stock_scope)))
     mask = {i for i in range(len(chunks)) if keep(i)}
     # 掩码 = 允许的全局下标;BM25 用对应子集索引(统计不串),向量层用掩码(先掩后切)
     if "pdf" in allowed and len(allowed) > 1:
@@ -391,6 +397,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
              "purpose": c.get("purpose", "knowledge"), "evidence_kind": mr_corpus.evidence_kind(c)}
         if c["source"] != "pdf":
             h["chunk_md5"] = c["md5"]  # heading alone is ambiguous when a document repeats headings
+        if c["source"] == "stock" and mr_stock.card_identity(c["file"]):
+            h["stock"] = dict(mr_stock.card_identity(c["file"]))
         if rr is not None:
             if rr["mode"] == "rerank":
                 h["rerank"] = round(float(score), 3)
@@ -415,6 +423,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
           "include_evaluation": include_evaluation})
     return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "confidence": confidence,
             "gate": gate, "rerank": rr, "note": note, "hits": hits,
+            **({"stock_filter": stock_scope, "stock_filter_origin": "explicit" if stock_filter is not None else "query"}
+               if source == "stock" else {}),
             "corpus_sha256": st.get("corpus_sha256"), "corpus_audit": st.get("corpus_audit")}
 
 
@@ -478,11 +488,45 @@ def _memory_get(file, source=None, heading=None, chunk_md5=None):
                 heading, text = matches[0]
                 purpose = mr_corpus.chunk_purpose(src["key"], os.path.basename(file), heading, purpose, purposes)
             result = {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text, "purpose": purpose}
+            if src["key"] == "stock" and mr_stock.card_identity(result["file"]):
+                result["stock"] = dict(mr_stock.card_identity(result["file"]))
             if heading is not None:
                 result["heading"] = heading
                 result["chunk_md5"] = mr_corpus.chunk_key(os.path.basename(file), heading, text)
             return result
     return {"ok": False, "error": "语料目录都没有 %s(把 memory_search 结果里的 file 字段原样传)" % file}
+
+
+def memory_check_answer(question, answer, evidence):
+    """Read cited sources ourselves; caller-provided source text is not proof."""
+    import mr_answer_eval
+    import mr_support
+    answer = mr_answer_eval.parse_answer(json.dumps(mr_corpus.redact_values(answer), ensure_ascii=False))
+    if not isinstance(evidence, list) or len(evidence) > 20:
+        raise ValueError("evidence must contain at most 20 source references")
+    contexts, errors = [], []
+    for reference in evidence:
+        if (not isinstance(reference, dict)
+                or set(reference) - {"id", "source", "file", "heading", "chunk_md5"}
+                or not all(isinstance(reference.get(k), str) and reference[k] for k in ("id", "source", "file"))
+                or reference["source"] not in mr_corpus.NOTE_SOURCES | {"pdf", "stock"}):
+            raise ValueError("Evidence needs id/source/file and optional heading/chunk_md5; never supply text")
+        fetched = _memory_get(**{k: v for k, v in reference.items() if k != "id"})
+        if not fetched.get("ok") or fetched.get("source") != reference["source"]:
+            errors.append({"id": reference["id"], "error": fetched.get("error", "Source identity mismatch")})
+            continue
+        text, heading = fetched["text"], fetched.get("heading", "(全文)")
+        if fetched["source"] == "pdf":
+            heading = "p" + str(fetched["page"])
+            pages = re.split(r"(?:^|\n)── p(\d+) ──\n", text)
+            text = next((pages[i + 1] for i in range(1, len(pages), 2) if pages[i] == str(fetched["page"])), "")
+        contexts.append({"id": reference["id"], "source": fetched["source"], "file": fetched["file"],
+                         "heading": heading, "text": text})
+    if errors:
+        return {"ok": False, "error": "引用资料读取失败；请重新搜索并获取有效段落。", "get_errors": errors}
+    result = mr_support.check_answer(answer, contexts, question)
+    _log({"tool": "check_answer", "sentences": len(result["sentences"]), "issues": len(result["issues"])})
+    return {"ok": True, **result}
 
 
 REGISTRY = {
@@ -491,9 +535,11 @@ REGISTRY = {
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
                 "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
+                "股票单标的+单日期/周期问题自动按卡片字段匹配；比较多日期/周期时保持宽搜，可用 stock_filter 明确范围。stock.card_date 是卡片日期，不保证正文每个价格都发生在该日。"
                 "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"
                 "low 表示证据不足,别硬凑。hybrid 每条带 legs(词法/语义名次);优先返回同文件正文,仅有索引块时标 evidence_kind=navigation。"
                 "snippet 是预览,引用前用 memory_get(file,source,heading,chunk_md5) 看完整段落；chunk_md5 可精确定位同名标题并拒绝过期片段。或省略 heading/指纹看全文。"
+                "写好引用后可用 memory_check_answer 逐句查数字、日期和周期；检查通过仍需阅读原文确认结论含义。"
                 "评测复盘默认排除;检索评测方法/运行复盘时用 include_evaluation=true,结果会标 purpose=evaluation。"
                 "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
                 "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"
@@ -506,6 +552,11 @@ REGISTRY = {
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"], "description": "可选,只查某一源。默认只查 case/book/mem;股票历史判断用 stock;教材原文用 pdf(heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
             "include_evaluation": {"type": "boolean", "description": "默认 false,排除标记为 evaluation 的评测复盘;查评测方法/复盘时设 true。样例问题不等于事实答案"},
+            "stock_filter": {"type": "object", "additionalProperties": False, "minProperties": 1,
+                             "description": "仅 source=stock。显式限定卡片身份；不存在时返回空，不拿相邻日期/其他周期代替。",
+                             "properties": {"ticker": {"type": "string"},
+                                            "card_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+                                            "horizon": {"type": "string", "enum": list(mr_stock.HORIZONS)}}},
             "rerank": {"anyOf": [{"type": "boolean"}, {"type": "string", "enum": list(mr_index.RERANKERS)}],
                        "description": "可选,开关或 cross-encoder 预设名;默认跟 MR_RERANK。普通笔记 base gate 先评前 3 条,低于 lo 时最多补到原前 5 条（不超过 topk）;PDF/stock 保留原五候选预算。每个文件最多补评一段词法正文。文件顺序和 score 不变,另给 rerank 分与 confidence;"
                                       "仅服务端 MR_RERANK_MODE=rerank 时评分前 15 条并按该分重排(候选数可由环境变量调整)"},
@@ -524,6 +575,31 @@ REGISTRY = {
             "heading": {"type": "string", "description": "可选,Markdown 标题优先精确匹配;唯一前缀可省略 (1) 等后缀,歧义或未找到时返回 candidates。省略则取全文;PDF 用 file 的 #p 页码"},
             "chunk_md5": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "可选,原样传入 memory_search 返回的 Markdown 段落指纹。同名标题用它精确定位；内容改变时返回 stale_reference，须重新搜索。PDF 用 #p 页码，不传此项。"},
         }, "required": ["file"]},
+    },
+    "memory_check_answer": {
+        "fn": memory_check_answer,
+        "desc": "回答前逐句核对引用。服务端重读实际资料，检查引文、数字、价格日期、卡片周期及把价格快照推成窗口结果的错误。"
+                "answer 用 decision=answer/insufficient、claims=[{text,citations:[{evidence_id,quote}]}]、reason；每条 claim 尽量一个事实。"
+                "evidence 是 id 和 memory_get 的 source/file/heading/chunk_md5，不能传自编 text。PDF 一页一个 id，file 带 #p 页码。"
+                "checks_pass=false 时必须修正/删去问题句或明确证据不足。true 仅代表未发现这些反例，不代表语义正确；仍逐句阅读引文，核对对象、日期、条件和否定。"
+                "历史卡片日期不能替代每个价格的观测日期；计划与单点价格不能证明整个窗口是否触发或实际成交。本工具不调用模型。",
+        "schema": {"type": "object", "additionalProperties": False, "properties": {
+            "question": {"type": "string"},
+            "answer": {"type": "object", "additionalProperties": False, "required": ["decision", "claims", "reason"],
+                       "properties": {"decision": {"type": "string", "enum": ["answer", "insufficient"]},
+                                      "reason": {"type": "string"},
+                                      "claims": {"type": "array", "maxItems": 12, "items": {
+                                          "type": "object", "additionalProperties": False, "required": ["text", "citations"],
+                                          "properties": {"text": {"type": "string"}, "citations": {
+                                              "type": "array", "minItems": 1, "maxItems": 10, "items": {
+                                                  "type": "object", "additionalProperties": False, "required": ["evidence_id", "quote"],
+                                                  "properties": {"evidence_id": {"type": "string"}, "quote": {"type": "string"}}}}}}}}},
+            "evidence": {"type": "array", "maxItems": 20, "items": {
+                "type": "object", "additionalProperties": False, "required": ["id", "source", "file"],
+                "properties": {"id": {"type": "string"}, "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
+                               "file": {"type": "string"}, "heading": {"type": "string"},
+                               "chunk_md5": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}}},
+        }, "required": ["question", "answer", "evidence"]},
     },
 }
 

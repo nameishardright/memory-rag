@@ -8,6 +8,7 @@ import re
 import threading
 
 import mr_corpus
+import mr_stock
 
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")  # GFW:HuggingFace 走镜像
 
@@ -207,9 +208,11 @@ class BM25:
         cache = BM25._TOK_CACHE
         self.docs = []
         for c in chunks:
-            key = c["md5"]   # md5 已含文件名+标题+正文(mr_corpus.chunk_key),就是 _index_text 的指纹
+            key = (c.get("source"), c["md5"])  # source affects stock-only lexical metadata
             if key not in cache:
-                cache[key] = tokenize(_index_text(c))
+                # Do not change _index_text: vectors retain their existing input
+                # and cache. Only the stock lexical leg needs separate fields.
+                cache[key] = tokenize(_index_text(c)) + tokenize(mr_stock.index_terms(c))
             self.docs.append(cache[key])
         if len(cache) > 4 * max(1, len(chunks)):   # 语料反复增删时别无限涨
             cache.clear()

@@ -10,6 +10,7 @@ import sys
 CODE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CODE))
 import mr_answer_eval as ae
+import mr_support
 
 
 def sha(path):
@@ -26,12 +27,32 @@ def review_summary(run, review):
     actual = {(r['policy'],r['id']) for r in rows}
     if actual != expected or len(rows) != len(expected):
         raise ValueError('Semantic review must cover every answer exactly once')
+    reviewed_sentences = {}
+    answers = {(p,r['id']): r for p,items in run['answers'].items() for r in items}
     for row in rows:
         for key in ('answer_correct','citations_support','scope_correct','refusal_correct'):
             if type(row.get(key)) is not bool:
                 raise ValueError('Semantic judgments must be explicit booleans')
         if not row.get('rationale'):
             raise ValueError('Semantic judgments need source-based rationale')
+        answer = answers[(row['policy'],row['id'])]
+        if 'support_check' in answer.get('grade', {}):
+            # New reports cannot replace sentence-level review with one green
+            # boolean for the whole answer. Old sealed reports remain readable.
+            expected_sentences = {(ci,si) for ci,c in enumerate(answer.get('answer',{}).get('claims',[]))
+                                  for si,_ in enumerate(mr_support.sentences(c['text']))}
+            sentence_rows = row.get('sentence_reviews', [])
+            actual_sentences = {(s.get('claim'),s.get('sentence')) for s in sentence_rows}
+            if actual_sentences != expected_sentences or len(sentence_rows) != len(expected_sentences):
+                raise ValueError('Semantic review must cover every sentence exactly once')
+            for sentence in sentence_rows:
+                if (any(type(sentence.get(k)) is not bool for k in ('supported','scope_correct'))
+                        or not sentence.get('rationale')):
+                    raise ValueError('Every sentence needs explicit support/scope judgments and a source-based rationale')
+            if ((row['citations_support'] and any(not s['supported'] for s in sentence_rows))
+                    or (row['scope_correct'] and any(not s['scope_correct'] for s in sentence_rows))):
+                raise ValueError('A failed sentence cannot be hidden by a passing answer-level judgment')
+            reviewed_sentences[(row['policy'],row['id'])] = sentence_rows
     def passed(row):
         return all(row[k] for k in ('answer_correct','citations_support','scope_correct','refusal_correct'))
     output = {}
@@ -45,6 +66,9 @@ def review_summary(run, review):
                           'citation_support_pass':sum(r['citations_support'] for r in selected),
                           'scope_pass':sum(r['scope_correct'] for r in selected),
                           'groups':len(groups),'all_questions_in_group_pass':sum(all(v) for v in groups.values()),
+                          'sentences_reviewed':sum(len(v) for (p,_),v in reviewed_sentences.items() if p==policy),
+                          'sentences_supported':sum(s['supported'] and s['scope_correct'] for (p,_),v in reviewed_sentences.items()
+                                                    if p==policy for s in v),
                           'method':review['method']}
     return output
 
