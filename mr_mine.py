@@ -145,13 +145,22 @@ def _show_q(q):
     return RE_ID.sub(lambda m: m.group(0)[:4] + "…", mr_corpus.redact(q))
 
 
-def main(days=0, multi=False, show_easy=False, out=None):
+def main(days=0, multi=False, show_easy=False, out=None, unranked=False):
     turns, st = scan(days)
     print("扫了 %d 个会话 / %d 个用户轮%s" % (st["sessions"], st["turns"], ("(近 %d 天)" % days) if days else ""))
     print("RAG 被用 vs 被绕过:memory_search/get 调用 %d 次,直接读语料文件 %d 次" % (st["rag_calls"], st["direct_reads"]))
     cands = candidates(turns, multi=multi)
     print("问句样候选 %d 条(%s)" % (len(cands), "含多文件轮" if multi else "只收单文件轮,--multi 放开"))
     if not cands:
+        return
+    if unranked:
+        # A holdout candidate must not be retrieved or selected by its score.
+        # Labels remain unreviewed until checked against source documents.
+        out = out or os.path.join(mr_corpus.BASE, ".cache", "mined-unranked.json")
+        os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+        with io.open(out, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"ranked": False, "draft": True, "candidates": cands}, f, ensure_ascii=False, indent=2)
+        print("未调用检索，未按分数筛题；%d 个待原文核验候选已保存:%s" % (len(cands), out))
         return
     rows = rank(cands)
     easy = [x for x in rows if x["rank"] and x["rank"] <= 3]

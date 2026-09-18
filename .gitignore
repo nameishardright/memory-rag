@@ -4,3 +4,5 @@ __pycache__/
 
 # 2026-09-16 股票案例库金标:语料私有,金标只在本机有意义,不进公开仓
 golden/golden_stock.json
+# Full passage labels and held-out questions may identify private source material.
+golden/private/

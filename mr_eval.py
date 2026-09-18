@@ -1,6 +1,7 @@
 """Retrieval evaluation over the exact returned hits, with optional passage labels.
 
-This module is consumed by evaluation only. Runtime retrieval never reads goldens.
+Evaluation owns the labels. Runtime reload may use question strings for a
+warning-only contamination audit; expected answers never affect retrieval.
 """
 import collections
 import json
@@ -19,7 +20,7 @@ class CorpusContaminationError(ValueError):
 
 
 def load_goldens(directory, extra=None):
-    """Read evaluation-owned files only; retrieval never calls this function."""
+    """Load local evaluation files; callers must not use labels to rank results."""
     paths = {p.resolve() for p in Path(directory).glob("*.json")}
     if extra is not None:
         paths.add(Path(extra).resolve())
@@ -102,11 +103,14 @@ def grade_hits(query, hits, source=None):
         if key not in seen:
             seen.add(key)
             documents.append(hit)
+    groups = query.get("evidence_groups") or ([query["evidence"]] if query.get("evidence") else [])
+    group_ranks = [next((i + 1 for i, hit in enumerate(hits)
+                        if any(matches_passage(hit, label) for label in group)), None) for group in groups]
     return {
         "returned_rank": next((i + 1 for i, h in enumerate(hits) if _expected_file(h, query, source)), None),
         "document_rank": next((i + 1 for i, h in enumerate(documents) if _expected_file(h, query, source)), None),
-        "evidence_rank": next((i + 1 for i, h in enumerate(hits)
-                               if any(matches_passage(h, label) for label in query.get("evidence", []))), None),
+        "evidence_rank": max(group_ranks) if group_ranks and all(r is not None for r in group_ranks) else None,
+        "evidence_group_ranks": group_ranks,
         "hard_negative_ranks": [i + 1 for i, h in enumerate(hits)
                                 if any(matches_passage(h, label) for label in query.get("hard_negatives", []))],
     }
@@ -115,10 +119,11 @@ def grade_hits(query, hits, source=None):
 def validate_labels(golden):
     groups = {}
     for q in golden["queries"]:
-        if "evidence" in q and q["expect"]:
-            if not q["evidence"]:
+        if ("evidence" in q or "evidence_groups" in q) and q["expect"]:
+            evidence_groups = q.get("evidence_groups", [q.get("evidence", [])])
+            if not evidence_groups or any(not group for group in evidence_groups):
                 raise ValueError("A positive passage label needs at least one acceptable passage")
-            for label in q["evidence"]:
+            for label in (label for group in evidence_groups for label in group):
                 if (label.get("file") not in q["expect"] or not label.get("source") or
                         not (label.get("heading") or label.get("heading_contains")) or not label.get("required_text")):
                     raise ValueError("Passage labels need source, expected file, heading and required_text")
@@ -148,7 +153,7 @@ def evaluate(golden, search, mode="hybrid", model=None, rerank=None, *, chunks=N
             raise RuntimeError("Search failed during evaluation: " + str(result.get("error")))
         grade = grade_hits(query, result["hits"], kwargs["source"])
         rows.append({"q": query["q"], "id": query.get("id"), "positive": bool(query["expect"]),
-                     "passage_labeled": bool(query.get("evidence")), **grade,
+                     "passage_labeled": bool(query.get("evidence") or query.get("evidence_groups")), **grade,
                      "confidence": result.get("confidence", "high"), "mode": result["mode"],
                      "gate": result.get("gate"), "rerank": result.get("rerank"),
                      "hits": result["hits"], "ms": (time.perf_counter() - start) * 1000})
@@ -160,7 +165,8 @@ def evaluate(golden, search, mode="hybrid", model=None, rerank=None, *, chunks=N
         return sum(r[key] is not None and r[key] <= k for r in population)
 
     def mrr(population, key):
-        return round(sum(1 / r[key] for r in population if r[key]) / len(population), 6) if population else None
+        return round(sum(1 / r[key] for r in population if r[key] is not None and 1 <= r[key] <= 10)
+                     / len(population), 6) if population else None
 
     summary = {
         "total": len(rows), "positives": len(positives), "negatives": len(negatives),

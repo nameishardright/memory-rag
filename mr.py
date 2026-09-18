@@ -292,6 +292,7 @@ if __name__ == "__main__":
     p.add_argument("--days", type=int, default=0, help="只挖近 N 天的用户轮;0=全部")
     p.add_argument("--multi", action="store_true", help="也收一轮读了多个语料文件的轮(默认只收单文件轮,多文件轮里大半是干活的工具性阅读)")
     p.add_argument("--show-easy", action="store_true", help="连现在已经排 ≤3 名的也打印")
+    p.add_argument("--unranked", action="store_true", help="只挖候选，不调用检索或按成绩筛题；封存留出集时使用")
     p.add_argument("--out", default=None, help="全部候选(含名次)落盘路径,默认 .cache/mined-transcripts.json")
     p = sub.add_parser("pull-model")
     p.add_argument("name", help="预设名或短名:bge-small-zh-v1.5|bge-m3|Qwen3-Embedding-0.6B|small|m3|qwen3")
@@ -324,7 +325,7 @@ if __name__ == "__main__":
         cmd_log(a.days, a.src)
     elif a.cmd == "mine-transcripts":
         import mr_mine
-        mr_mine.main(a.days, a.multi, a.show_easy, a.out)
+        mr_mine.main(a.days, a.multi, a.show_easy, a.out, a.unranked)
     elif a.cmd == "pull-model":
         sys.exit(0 if cmd_pull_model(a.name) else 1)
     elif a.cmd == "pdf-extract":
