@@ -198,6 +198,45 @@ class CorpusPolicyTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["candidates"], ["操作步骤"])
 
+    def test_search_content_reference_resolves_duplicate_exact_headings(self):
+        (self.root / 'lesson.md').write_text('# 复盘\n第一件事是缓存刷新。\n# 复盘\n第二件事是列车超时回滚。',encoding='utf-8')
+        self.assertFalse(mr_tools.memory_get('lesson.md',source='book',heading='复盘')['ok'])
+        with patch.object(mr_tools,'_STATE',{}):
+            found=mr_tools.memory_search('列车超时回滚',source='book',mode='bm25',topk=1,rerank=False)['hits'][0]
+        result=mr_tools.memory_get(found['file'],source=found['source'],heading=found['heading'],chunk_md5=found['chunk_md5'])
+        self.assertTrue(result['ok'])
+        self.assertIn('列车超时回滚',result['text'])
+        self.assertNotIn('缓存刷新',result['text'])
+        self.assertEqual(result['chunk_md5'],found['chunk_md5'])
+
+    def test_stale_content_reference_never_silently_reads_new_body(self):
+        p=self.root/'lesson.md'
+        p.write_text('# 操作\n旧版本事实。',encoding='utf-8')
+        reference=mr_corpus.load_chunks()[0]['md5']
+        p.write_text('# 操作\n新版本完全不同的事实。',encoding='utf-8')
+        result=mr_tools.memory_get('lesson.md',source='book',heading='操作',chunk_md5=reference)
+        self.assertFalse(result['ok'])
+        self.assertTrue(result['stale_reference'])
+        self.assertNotIn('text',result)
+
+    def test_content_reference_without_heading_and_mismatched_heading(self):
+        (self.root/'lesson.md').write_text('# 操作\n正文事实。',encoding='utf-8')
+        reference=mr_corpus.load_chunks()[0]['md5']
+        result=mr_tools.memory_get('lesson.md',source='book',chunk_md5=reference)
+        self.assertEqual(result['heading'],'操作')
+        self.assertEqual(result['text'],'正文事实。')
+        self.assertFalse(mr_tools.memory_get('lesson.md',source='book',heading='另一个标题',chunk_md5=reference)['ok'])
+
+    def test_content_reference_uses_redacted_text_and_is_not_a_cross_file_locator(self):
+        self.enterContext(patch.object(mr_corpus,'SOURCES',[{'key':'book','dir':str(self.root),'redact':True}]))
+        (self.root/'lesson.md').write_text('# 设置\napi_key: synthetic-test-value\n配置来自测试。',encoding='utf-8')
+        (self.root/'other.md').write_text('# 设置\napi_key: synthetic-test-value\n配置来自测试。',encoding='utf-8')
+        c=next(c for c in mr_corpus.load_chunks() if c['file']=='lesson.md')
+        result=mr_tools.memory_get('lesson.md',source='book',chunk_md5=c['md5'])
+        self.assertTrue(result['ok'])
+        self.assertNotIn('synthetic-test-value',result['text'])
+        self.assertFalse(mr_tools.memory_get('other.md',source='book',chunk_md5=c['md5'])['ok'])
+
     def test_frontmatter_followed_by_body_and_a_rule_is_still_body(self):
         c = chunk("mem", "note.md", "(开头)", "---\ndescription: 维护规则\n---\n写入、更新、删错。\n---")
         self.assertEqual(mr_corpus.evidence_kind(c), "body")

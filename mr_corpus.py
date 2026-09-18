@@ -147,10 +147,12 @@ def load_pdf_chunks():
     for path in pdf_files():
         fn = os.path.basename(path)
         for i, text in enumerate(extract_pdf(path, progress=lambda a, b, _f=fn: print("[pdf] %s %d/%d" % (_f, a, b), file=sys.stderr))):
+            text = redact(text)
             if len(text) < MIN_PAGE_CHARS:
                 continue
             head = "p%d" % (i + 1)
             for h, body in _hard_wrap(head, text, strategy=chunk_strategy("pdf")):
+                body = redact(body)  # a character boundary can cut a redaction placeholder
                 chunks.append({
                     "id": hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12],
                     "source": "pdf", "file": fn, "heading": h, "text": body,
@@ -195,11 +197,43 @@ def chunk_key(fn, heading, body):
 OVERLAP = 150
 
 # 凭据脱敏:值抹掉、键留着——搜"哪里有key"仍可命中,但值不进索引/不出工具
-RE_CRED = re.compile(r"(?i)(password|passwd|pwd|secret|token|api[_-]?key|accesskey)(\s*[:=]\s*)(\S+)")
+RE_CRED = re.compile(r"(?i)(?<![\w-])(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([^\s,;}`]+)")
+RE_QUOTED_CRED = re.compile(r"(?i)(?<![\w-])(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([\"'])(.*?)(\3)")
+RE_INLINE_LOGIN = re.compile(r"`([A-Za-z0-9_.@-]{1,64}):([^`\s:<>]{6,})`")
+RE_URL_LOGIN = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)([^\s/@]+)(@)")
+RE_AUTH_HEADER = re.compile(r"(?i)(\b(?:Authorization|Proxy-Authorization)[\"']?\s*[:=]\s*[\"']?(?:Basic|Bearer)\s+)([^\s\"'`,;}]+)")
 
 
 def redact(text):
-    return RE_CRED.sub(lambda m: m.group(1) + m.group(2) + "<REDACTED>", text)
+    text = RE_URL_LOGIN.sub(lambda m: m[1] + '<REDACTED>' + m[3], text)
+    text = RE_AUTH_HEADER.sub(lambda m: m[1] + '<REDACTED>', text)
+    def inline(match):
+        value = match[2]
+        nearby = text[max(0, match.start()-60):match.start()]
+        credential_context = re.search(r"(?i)账号|账户|凭据|账密|认证|password|credential|auth", nearby)
+        mixed_value = re.search(r'[A-Za-z]', value) and re.search(r'[0-9!$%^&*+=]', value)
+        return '`' + match[1] + ':<REDACTED>`' if credential_context or mixed_value else match[0]
+    text = RE_INLINE_LOGIN.sub(inline, text)
+    text = RE_QUOTED_CRED.sub(lambda m: m[1] + m[2] + m[3] + '<REDACTED>' + m[3], text)
+    def value(match):
+        value = match[3]
+        if value.startswith(('"', "'")):
+            return match[0]  # already handled as a quoted value; retain balanced quotes
+        return match[1] + match[2] + '<REDACTED>'
+    return RE_CRED.sub(value, text)
+
+
+def redact_values(value):
+    """Preserve JSON structure while scrubbing nested diagnostic/model strings."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, list):
+        return [redact_values(item) for item in value]
+    if isinstance(value, dict):
+        return {key: ('<REDACTED>' if re.fullmatch(
+            r'(?i)password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥', key)
+                     else redact_values(item)) for key, item in value.items()}
+    return value
 
 
 def _split_heading(text):
@@ -295,11 +329,12 @@ def load_chunks():
             except OSError as e:
                 print("[corpus] 读失败 %s: %s" % (fn, e), file=sys.stderr)
                 continue
-            if src["redact"]:
-                text = redact(text)
+            # Credential syntax is a content property, not a source property.
+            text = redact(text)
             purpose = document_purpose(src["key"], fn, text, purposes)
             for head, body in (hb for h in _split_heading(text)
                                for hb in _hard_wrap(*h, strategy=chunk_strategy(src["key"]))):
+                body = redact(body)
                 chunks.append({
                     "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
                     "source": src["key"], "file": fn, "heading": head, "text": body,

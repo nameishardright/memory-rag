@@ -69,6 +69,30 @@ class _SubBM25:
         return [(self.idx[l], s) for l, s in self.bm.search(query, topk=topk, mask=local_mask)]
 
 
+class _SubVec:
+    """Source-only embeddings with global indices at the retrieval boundary.
+
+PDF-only search already masks every non-PDF row. Building only those permitted
+rows keeps the same cosine scores without embedding unused stocks and notes.
+The actual model/cache remains shared with the ordinary VecIndex implementation.
+"""
+    scope = 'pdf'
+
+    def __init__(self, chunks, idx, model=None, spec=None):
+        self.idx = list(idx)
+        self.vector = mr_index.VecIndex([chunks[i] for i in self.idx], model=model, spec=spec)
+        self.spec = self.vector.spec
+        self.available, self.err = self.vector.available, self.vector.err
+
+    @property
+    def _model(self):
+        return self.vector._model
+
+    def search(self, query, topk=50, mask=None):
+        local_mask = None if mask is None else {local for local, global_index in enumerate(self.idx) if global_index in mask}
+        return [(self.idx[local], score) for local, score in self.vector.search(query, topk=topk, mask=local_mask)]
+
+
 def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     chunks = mr_corpus.load_chunks()
@@ -104,12 +128,14 @@ def _rebuild(reason):
     for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation", "bm25_pdf_evaluation"):
         _STATE.pop(key, None)   # 混合/PDF、股票原统计、含评测笔记的统计均按需重建
     for slug, v in list(_STATE.get("vecs", {}).items()):   # 每个已装的模型都增量重建:md5 缓存只算新块,模型实例复用
-        _STATE["vecs"][slug] = mr_index.VecIndex(chunks, model=v._model, spec=v.spec)
+        _STATE["vecs"][slug] = (_SubVec(chunks, pdf_idx, model=v._model, spec=v.spec)
+                                 if getattr(v, 'scope', None) == 'pdf'
+                                 else mr_index.VecIndex(chunks, model=v._model, spec=v.spec))
     _STATE["sig"] = mr_corpus.signature()
     print("[reload] %s:语料 %d→%d 块" % (reason, old_n, len(chunks)), file=sys.stderr)
 
 
-def _ensure(mode, model=None):
+def _ensure(mode, model=None, vec_scope=None):
     """🔴 热更(2026-09-08):原来进程启动装一次索引就不看文件了,会话里新写的笔记查不到,要重启会话——
     现在每次查询前(最多每 RELOAD_SEC 秒一次)比对语料指纹,变了就重建;向量层按 md5 增量,只多算新块。"""
     with _LOCK:
@@ -125,9 +151,13 @@ def _ensure(mode, model=None):
             # 一键切换:每个模型各建各的向量层,按 slug 存在 _STATE["vecs"],切回来不重算;没权重的模型 available=False,查询时回退 bm25
             spec = mr_index.model_spec(model)
             vecs = _STATE.setdefault("vecs", {})
-            if spec["slug"] not in vecs:
-                vecs[spec["slug"]] = mr_index.VecIndex(_STATE["chunks"], spec=spec)
-            _STATE["vec"] = vecs[spec["slug"]]   # 「最近一次用的」;stats / 老脚本还读这个名字
+            key = spec['slug'] + ('|pdf' if vec_scope == 'pdf' else '')
+            if key not in vecs:
+                shared = next((v._model for v in vecs.values()
+                               if getattr(v,'spec',{}).get('slug') == spec['slug'] and getattr(v,'_model',None) is not None), None)
+                vecs[key] = (_SubVec(_STATE['chunks'], _STATE['idx']['pdf'], model=shared, spec=spec)
+                             if vec_scope == 'pdf' else mr_index.VecIndex(_STATE['chunks'], model=shared, spec=spec))
+            _STATE["vec"] = vecs[key]   # 「最近一次用的」;stats / 老脚本还读这个名字
         return _STATE
 
 
@@ -181,7 +211,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     原文页把带 ⭐ 页码的笔记挤下去;而 source=pdf 单独查,原文页 9/12 能找到。两层开关:环境变量管装不装,参数管查不查。"""
     if model is None and source == "pdf":
         model = os.environ.get("MR_EMBED_MODEL_PDF") or None
-    st = _ensure(mode, model)
+    st = _ensure(mode, model, vec_scope='pdf') if source == 'pdf' else _ensure(mode, model)
     spec = mr_index.model_spec(model)
     chunks, note, used_model = st["chunks"], "", None
     if source:
@@ -221,7 +251,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     if mode == "bm25":
         ranked = bm
     else:
-        v = st.get("vecs", {}).get(spec["slug"])
+        vector_key = spec['slug'] + ('|pdf' if source == 'pdf' else '')
+        v = st.get("vecs", {}).get(vector_key)
         if v is None or not v.available:
             ranked, note = bm, "向量层不可用(%s),已回退 bm25" % getattr(v, "err", "")
             mode = "bm25(fallback)"
@@ -356,8 +387,10 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             continue
         h = {"rank": len(hits) + 1, "score": round(float(score), 4),
              "source": c["source"], "file": c["file"], "heading": c["heading"],
-             "snippet": _snippet(c["text"], query), "chunk_id": c["id"],
+             "snippet": mr_corpus.redact(_snippet(c["text"], query)), "chunk_id": c["id"],
              "purpose": c.get("purpose", "knowledge"), "evidence_kind": mr_corpus.evidence_kind(c)}
+        if c["source"] != "pdf":
+            h["chunk_md5"] = c["md5"]  # heading alone is ambiguous when a document repeats headings
         if rr is not None:
             if rr["mode"] == "rerank":
                 h["rerank"] = round(float(score), 3)
@@ -385,16 +418,20 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             "corpus_sha256": st.get("corpus_sha256"), "corpus_audit": st.get("corpus_audit")}
 
 
-def memory_get(file, source=None, heading=None):
-    r = _memory_get(file, source, heading)
+def memory_get(file, source=None, heading=None, chunk_md5=None):
+    r = _memory_get(file, source, heading, chunk_md5)
     _log({"tool": "get", "file": os.path.basename(file), "source": r.get("source") or source, "ok": r.get("ok")})
     return r
 
 
-def _memory_get(file, source=None, heading=None):
+def _memory_get(file, source=None, heading=None, chunk_md5=None):
+    if chunk_md5 is not None and (not isinstance(chunk_md5, str) or not re.fullmatch(r"[0-9a-f]{32}", chunk_md5)):
+        return {"ok": False, "error": "chunk_md5 必须是 memory_search 返回的 32 位段落指纹"}
     # PDF 原文:file 形如「Agentic-AI指南.pdf#p81」→ 回那一页 ±1 页(页码 Acrobat 1-indexed);缓存没建就现抽(首次几分钟)
     m = re.match(r"^(.+?\.pdf)(?:#p(\d+))?$", os.path.basename(file), re.I)
     if m:
+        if chunk_md5 is not None:
+            return {"ok": False, "error": "PDF 请用 file 的 #p 页码读取；chunk_md5 仅用于 Markdown 段落"}
         path = os.path.join(mr_corpus.PDF_DIR, m.group(1))
         if not os.path.isfile(path):
             return {"ok": False, "error": "没有这个 PDF: %s" % m.group(1)}
@@ -405,7 +442,7 @@ def _memory_get(file, source=None, heading=None):
         if p < 1 or p > len(pages):
             return {"ok": False, "error": "页码越界:%s 共 %d 页" % (m.group(1), len(pages))}
         lo, hi = max(1, p - 1), min(len(pages), p + 1)
-        text = "\n\n".join("── p%d ──\n%s" % (i, pages[i - 1]) for i in range(lo, hi + 1))
+        text = "\n\n".join("── p%d ──\n%s" % (i, mr_corpus.redact(pages[i - 1])) for i in range(lo, hi + 1))
         purposes = mr_corpus.load_purposes()
         purpose = mr_corpus.chunk_purpose("pdf", m.group(1), "p%d" % p,
                                          purposes.get(("pdf", m.group(1)), "knowledge"), purposes)
@@ -415,17 +452,25 @@ def _memory_get(file, source=None, heading=None):
         if os.path.isfile(p) and (not source or src["key"] == source):
             with open(p, encoding="utf-8", errors="replace") as f:
                 text = f.read()
-            if src["redact"]:
-                text = mr_corpus.redact(text)
+            text = mr_corpus.redact(text)
             purposes = mr_corpus.load_purposes()
             purpose = mr_corpus.document_purpose(src["key"], os.path.basename(file), text, purposes)
-            if heading is not None:
-                blocks = [block for h in mr_corpus._split_heading(text)
-                          for block in mr_corpus._hard_wrap(*h, strategy=mr_corpus.chunk_strategy(src["key"]))]
-                requested = heading.strip()
-                matches = [block for block in blocks if block[0] == requested]
-                if not matches and requested:
-                    matches = [block for block in blocks if block[0].startswith(requested)]
+            if heading is not None or chunk_md5 is not None:
+                blocks = [(head, mr_corpus.redact(body)) for h in mr_corpus._split_heading(text)
+                          for head, body in mr_corpus._hard_wrap(*h, strategy=mr_corpus.chunk_strategy(src["key"]))]
+                requested = heading.strip() if heading is not None else None
+                if chunk_md5 is not None:
+                    matches = list(dict.fromkeys(block for block in blocks
+                        if mr_corpus.chunk_key(os.path.basename(file), *block) == chunk_md5))
+                    if len(matches) != 1:
+                        return {"ok": False, "error": "段落内容已变化或指纹不存在；请重新 memory_search 后再读取",
+                                "stale_reference": True}
+                    if requested is not None and not matches[0][0].startswith(requested):
+                        return {"ok": False, "error": "heading 与 chunk_md5 指向不同段落"}
+                else:
+                    matches = [block for block in blocks if block[0] == requested]
+                    if not matches and requested:
+                        matches = [block for block in blocks if block[0].startswith(requested)]
                 if len(matches) != 1:
                     candidates = list(dict.fromkeys(head for head, _ in (matches or blocks)))
                     return {"ok": False, "error": "段落标题不存在或不唯一；请使用候选完整标题，或省略 heading 读取全文",
@@ -435,6 +480,7 @@ def _memory_get(file, source=None, heading=None):
             result = {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text, "purpose": purpose}
             if heading is not None:
                 result["heading"] = heading
+                result["chunk_md5"] = mr_corpus.chunk_key(os.path.basename(file), heading, text)
             return result
     return {"ok": False, "error": "语料目录都没有 %s(把 memory_search 结果里的 file 字段原样传)" % file}
 
@@ -447,7 +493,7 @@ REGISTRY = {
                 "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
                 "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"
                 "low 表示证据不足,别硬凑。hybrid 每条带 legs(词法/语义名次);优先返回同文件正文,仅有索引块时标 evidence_kind=navigation。"
-                "snippet 是预览,引用前用 memory_get(file,source,heading) 看完整段落,或省略 heading 看全文。"
+                "snippet 是预览,引用前用 memory_get(file,source,heading,chunk_md5) 看完整段落；chunk_md5 可精确定位同名标题并拒绝过期片段。或省略 heading/指纹看全文。"
                 "评测复盘默认排除;检索评测方法/运行复盘时用 include_evaluation=true,结果会标 purpose=evaluation。"
                 "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
                 "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"
@@ -476,6 +522,7 @@ REGISTRY = {
             "file": {"type": "string", "description": "文件名,来自 memory_search 结果的 file 字段;教材原文写成「xxx.pdf#p81」取那一页 ±1"},
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
             "heading": {"type": "string", "description": "可选,Markdown 标题优先精确匹配;唯一前缀可省略 (1) 等后缀,歧义或未找到时返回 candidates。省略则取全文;PDF 用 file 的 #p 页码"},
+            "chunk_md5": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "可选,原样传入 memory_search 返回的 Markdown 段落指纹。同名标题用它精确定位；内容改变时返回 stale_reference，须重新搜索。PDF 用 #p 页码，不传此项。"},
         }, "required": ["file"]},
     },
 }

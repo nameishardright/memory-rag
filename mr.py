@@ -303,6 +303,7 @@ if __name__ == "__main__":
     p.add_argument("file")
     p.add_argument("--source", choices=["case", "book", "mem", "pdf", "stock"])
     p.add_argument("--heading", help="精确取 search 命中的完整 Markdown 段落")
+    p.add_argument("--chunk-md5", help="search 返回的段落内容指纹，消除同名标题歧义并检查内容版本")
     sub.add_parser("setup-vec")
     a = ap.parse_args()
     if a.cmd == "stats":
@@ -336,7 +337,7 @@ if __name__ == "__main__":
     elif a.cmd == "ranks":
         cmd_ranks(a.model)
     elif a.cmd == "get":
-        r = mr_tools.memory_get(a.file, a.source, a.heading)
+        r = mr_tools.memory_get(a.file, a.source, a.heading, a.chunk_md5)
         print(r["text"] if r.get("ok") else r.get("error"))
     elif a.cmd == "setup-vec":
         cmd_setup_vec()
