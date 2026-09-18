@@ -134,6 +134,11 @@ class ClaimSupportTests(unittest.TestCase):
         result=self.check('已经成交。',[c],[{'evidence_id':'e1','quote':'已经成交，才登记执行结果。注意后续复核。'}])
         self.assertFalse(result['checks_pass'])
 
+    def test_later_factual_occurrence_is_not_hidden_by_an_earlier_hypothesis(self):
+        c=evidence(text='如果已经成交，才登记执行结果。实际核对：已经成交。')
+        result=self.check('已经成交。',[c],[{'evidence_id':'e1','quote':'已经成交'}])
+        self.assertTrue(result['checks_pass'])
+
     def test_a_required_fact_cannot_borrow_an_unrelated_claims_citation(self):
         from test_answer_evaluation import fixture
         q,c,a = fixture()

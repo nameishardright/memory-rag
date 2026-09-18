@@ -102,17 +102,21 @@ def _outcomes(text):
 
 
 def _source_envelope(context, quote):
-    """Recover complete intersecting sentences even if a quote spans several."""
+    """Recover full sentences at every occurrence, including multi-sentence quotes."""
     source = normal(context['text'])
-    start = source.find(normal(quote))
-    end, cursor, enclosing = start + len(normal(quote)), 0, []
+    needle = normal(quote)
+    start, spans = source.find(needle), []
+    while start >= 0:
+        spans.append((start,start+len(needle)))
+        start = source.find(needle,start+1)
+    cursor, enclosing = 0, []
     for sentence in sentences(context['text']):
         part = normal(sentence)
         pos = source.find(part, cursor)
         if pos < 0:
             continue
         cursor = pos + len(part)
-        if pos < end and cursor > start:
+        if any(pos < end and cursor > start for start,end in spans):
             enclosing.append(sentence)
     return '\n'.join(enclosing)
 
