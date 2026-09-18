@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 
 CODE = Path(__file__).resolve().parents[1]
 
@@ -27,6 +29,42 @@ def delivery_state(repo):
             "branch": git("branch", "--show-current").stdout.strip(),
             "worktree_clean": not status, "status": status.splitlines(),
             "observed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+
+
+def remote_state(repo, local_head, branch="main"):
+    """Observe the remote now; never infer historical publication from local Git."""
+    record = {"observed_at":time.strftime("%Y-%m-%dT%H:%M:%S%z"),"remote":"origin","branch":branch,
+              "head":None,"matches_local":None,"visibility":"unknown"}
+    def git(*args):
+        return subprocess.run(["git","-C",str(repo),*args],capture_output=True,text=True,
+                              encoding="utf-8",errors="replace",timeout=20)
+    try:
+        result = git("ls-remote","origin","refs/heads/"+branch)
+        fields = result.stdout.split()
+        if result.returncode == 0 and len(fields) >= 2:
+            record.update(head=fields[0],matches_local=fields[0] == local_head)
+        url = git("remote","get-url","origin").stdout.strip()
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.hostname == "github.com":
+            slug = parsed.path.strip("/").removesuffix(".git")
+            if len(slug.split("/")) == 2:
+                request = urllib.request.Request("https://api.github.com/repos/"+slug,
+                                                  headers={"User-Agent":"memory-rag-delivery-check"})
+                with urllib.request.urlopen(request,timeout=10) as response:
+                    data = json.load(response)
+                record["visibility"] = "private" if data["private"] else "public"
+    except (OSError,ValueError,KeyError,subprocess.TimeoutExpired):
+        # Remote uncertainty is reported, never converted into 'not published'.
+        pass
+    return record
+
+
+def remote_delivery_text(remote):
+    if remote["head"] is None:
+        return "远端状态未核实，不推断是否发布。"
+    relation = "与本地一致" if remote["matches_local"] else "与本地不同"
+    return "远端 %s/%s 为 `%s`，%s；仓库可见性 `%s`，核对时间 `%s`。" % (
+        remote["remote"],remote["branch"],remote["head"],relation,remote["visibility"],remote["observed_at"])
 
 
 def require_committed(state):
@@ -59,13 +97,14 @@ def main():
             raise RuntimeError("Unit-tested file changed: " + relative)
     delivery = delivery_state(CODE)
     require_committed(delivery)
+    delivery["remote"] = remote_state(CODE,delivery["head"])
     drift = corpus_change_text(result["live_corpus_unchanged_during_run"])
     s = lambda version, suite: result["runs"][version][suite]["summary"]
     rows = []
     for label, suite in (("普通 hybrid", "notes_hybrid"), ("普通 BM25", "notes_bm25"), ("普通纯向量", "notes_vec"),
                          ("股票 hybrid（draft）", "stock_hybrid"), ("PDF bge-m3", "pdf_m3")):
         before, after = s("before", suite), s("after", suite)
-        rows.append("| %s | %d/%d → %d/%d | %.3f → %.3f |" % (
+        rows.append("| %s | %d/%d → %d/%d | %.6f → %.6f |" % (
             label, before["returned_hit_at5"], before["positives"], after["returned_hit_at5"], after["positives"],
             before["returned_mrr_at10"], after["returned_mrr_at10"]))
     before, after = s("before", "evidence_gate"), s("after", "evidence_gate")
@@ -73,7 +112,7 @@ def main():
     latency = mcp.get("latency", {})
     report = f"""# memory_rag 复核修正与交付
 
-**交付状态：已提交，工作树干净。** 本地提交 `{delivery['head']}`，分支 `{delivery['branch']}`；状态核对时间 `{delivery['observed_at']}`。本报告记录本地交付，不代表远程发布。
+**交付状态：已提交，工作树干净。** 本地提交 `{delivery['head']}`，分支 `{delivery['branch']}`；状态核对时间 `{delivery['observed_at']}`。{remote_delivery_text(delivery['remote'])}
 
 **性能状态：{latency.get('budget_status', '未测，不作达标结论')}。** 功能通过与延迟预算分开报告。
 
@@ -90,14 +129,14 @@ def main():
 ## 复核项
 
 - 上一轮改动已按运行时、评测模块与标签、测试与文档提交为三组；本轮复核修正另有提交。
-- {drift} 实时 MCP 的调用验证另见运行记录。
+- 质量对照：{drift} 此项只覆盖质量对照时段。MCP 时段须另看逐次语料 SHA，不能据此推断 MCP 时段也稳定。
 - 评测前扫描全部已装载来源和本仓全部金标问句；未标 evaluation 的块出现原问句时，以非零状态终止，不再输出质量成绩。探测器不依赖文件名单，不自动改用途，也不宣称能发现改写过的问句。
 - 本轮真实扫描曾拦住两篇漏标复盘及两页教材天气示例；核对正文后分别标注，教材其余页保留。已标材料仍可显式搜索或 memory_get 读取。
 - memory_get 优先精确标题匹配，其次唯一前缀匹配；省略分片后缀后若仍有多个候选，会列出完整标题，不静默只取第一片。
 
 ## 耗时与剩余工作
 
-MCP 新进程到首次股票 BM25 请求完成（rerank=false，包含服务预热）：{latency.get('first_search_ms', '未测')} ms。默认 hybrid 加首次 rerank 的完整冷启动尚未单独测量。暖查询使用 hybrid+base gate，样本数：{latency.get('warm_samples', '未测')}；样本 p50：{latency.get('warm_p50_ms', '未测')} ms，p95：{latency.get('warm_p95_ms', '未测')} ms。这些是本机有限样本；冷启动读缓存、机器负载会影响结果。质量对照中的缓存耗时不拿来替代这些实测。
+MCP 新进程到首次股票 BM25 请求完成（rerank=false，包含服务预热）：{latency.get('first_search_ms', '未测')} ms。默认 hybrid 加首次 rerank 的完整冷启动尚未单独测量。暖查询使用 hybrid+base gate，样本数：{latency.get('warm_samples', '未测')}；样本 p50：{latency.get('warm_p50_ms', '未测')} ms，经验 p95：{latency.get('warm_p95_ms', '未测')} ms。六样本时此 p95 就是最大观测值，不能当作稳定尾延迟结论。这些是本机有限样本；冷启动读缓存、机器负载会影响结果。质量对照中的缓存耗时不拿来替代这些实测。
 
 暖查询目标预算为 p50 ≤ 2000 ms、p95 ≤ 4000 ms，新进程首查 ≤ 60000 ms。当前预算状态：{latency.get('budget_status', '未测，不作达标结论')}。本轮未修改模型截断长度、候选数或 hi/lo；预算没有达标时，性能优化仍是待办，不计入功能通过数。
 

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "labels_location": "golden/private/notes-evidence.json (ignored, private local data)",
+  "labels_sha256": "88c3b06736d5561a7eadbdc979a7c90dab8725cb0179b1be7376a4867933cbed",
+  "questions": 23,
+  "acceptable_source_sections": 27,
+  "reviewer": "same agent, source-first review before retrieval experiments",
+  "split": "regression",
+  "original_59_unchanged": true,
+  "strict_preview_facts": true,
+  "has_multi_passage_groups": true,
+  "heldout_questions": 3,
+  "heldout_authorship": "same agent, result holdout only, not independent human blind audit",
+  "heldout_sha256": "75c6723f6a8c8f5fcff9d0735aa2164abbbaf0f2465f256615af6adbe108534d"
+}

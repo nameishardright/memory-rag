@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "ordinary_note_profile": {
+    "key": "bge-reranker-base",
+    "max_length": 256,
+    "gate_candidates": 3,
+    "max_windows": 2,
+    "fallback_candidates": 5,
+    "hi": 0.5,
+    "lo": 0.1
+  },
+  "other_sources": "PDF, stock and mixed-PDF retain 512 tokens / 5 candidates / 3 windows",
+  "calibration": "source-reviewed 23 positive regressions and 12 negative regressions; one coarse-grid calibration followed by rerun",
+  "calibration_counts": {
+    "hi": 0.5,
+    "lo": 0.1,
+    "positive_low": 0,
+    "positive_high": 22,
+    "negative_high": 0,
+    "negative_low": 9,
+    "eligible": true
+  },
+  "evidence_labels_sha256": "88c3b06736d5561a7eadbdc979a7c90dab8725cb0179b1be7376a4867933cbed",
+  "model_weights_sha256": "ced967c45fd1902eb92716c9ceeca7c95a936770ea9db611f5a841b926e33fbd",
+  "limitations": [
+    "relevance labels are not answer accuracy",
+    "regression calibration is not blind testing",
+    "input truncation and window limits remain a coverage tradeoff"
+  ]
+}

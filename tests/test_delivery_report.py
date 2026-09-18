@@ -3,10 +3,22 @@ import subprocess
 import tempfile
 import unittest
 
-from scripts.make_report import corpus_change_text, delivery_state, require_committed
+from scripts.make_report import corpus_change_text, delivery_state, require_committed, remote_delivery_text
 
 
 class DeliveryReportTests(unittest.TestCase):
+    def test_remote_uncertainty_does_not_become_unpublished(self):
+        text=remote_delivery_text({"head":None})
+        self.assertIn("未核实",text)
+        self.assertNotIn("未发布",text)
+
+    def test_remote_publication_is_reported_with_its_own_observation_time(self):
+        text=remote_delivery_text({"head":"a"*40,"matches_local":True,"remote":"origin","branch":"main",
+                                   "visibility":"public","observed_at":"2026-09-18T15:00:00+0800"})
+        self.assertIn("public",text)
+        self.assertIn("与本地一致",text)
+        self.assertIn("2026-09-18T15:00:00+0800",text)
+
     def test_corpus_changed_is_an_affirmative_sentence(self):
         text = corpus_change_text(False)
         self.assertIn("发生了变化", text)

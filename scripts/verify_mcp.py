@@ -23,23 +23,33 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cache", type=Path, required=True)
+    parser.add_argument("--models", type=Path, default=CODE / ".cache")
+    parser.add_argument("--frozen", type=Path, help="Optional Markdown source snapshot; the child patches sources before starting the real server")
+    parser.add_argument("--first-search",choices=("stock-bm25","hybrid"),default="stock-bm25",
+                        help="Measure either the legacy first stock BM25 call or a full default hybrid plus gate call")
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.cache.mkdir(parents=True, exist_ok=True)
     for pattern in ("emb-*.npy", "emb_meta-*.json"):
-        for path in (CODE / ".cache").glob(pattern):
+        for path in args.models.glob(pattern):
             if not (args.cache / path.name).exists():
                 shutil.copy2(path, args.cache / path.name)
     env = dict(os.environ)
     env.update(MR_LOG="0", MR_PDF="1", MR_RERANK="bge-reranker-base", MR_RERANK_MODE="gate", MR_GATE="note",
                MR_EMBED_MODEL_PDF="bge-m3",
-               MR_EMBED_MODEL="bge-small-zh-v1.5", MR_CACHE_DIR=str(args.cache), MR_MODELS_DIR=str(CODE / ".cache"),
+               MR_EMBED_MODEL="bge-small-zh-v1.5", MR_CACHE_DIR=str(args.cache), MR_MODELS_DIR=str(args.models.resolve()),
                HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", TOKENIZERS_PARALLELISM="false")
     env.pop("MR_EMBED_ALLOW_DOWNLOAD", None)
     env.pop("MR_WARM_HEAVY", None)
+    env["MR_VERIFY_PDF_CACHE"] = str((args.models / "pdf-text").resolve())
+    if args.frozen:
+        env["MR_VERIFY_FROZEN"] = str(args.frozen.resolve())
+        env["MR_CORPUS_POLICY"] = str((args.frozen / "corpus-policy.json").resolve())
     evidence = json.loads((CODE / "golden" / "golden_evidence.json").read_text(encoding="utf-8"))
     stock = json.loads((CODE / "golden" / "golden_stock.json").read_text(encoding="utf-8"))
     pdf = json.loads((CODE / "golden" / "golden_pdf.json").read_text(encoding="utf-8"))
+    notes = json.loads((CODE / "golden/golden_queries.json").read_text(encoding="utf-8"))
+    negatives = json.loads((CODE / "golden/golden_negative.json").read_text(encoding="utf-8"))
     report = {"run_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "transport": "real stdio JSON-RPC",
               "checks": {}, "code_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in CODE.glob("*.py")}}
     checks = report["checks"]
@@ -49,7 +59,12 @@ def main():
 
     with (args.output.parent / "mcp-stderr.log").open("w", encoding="utf-8") as stderr:
         process_started = time.perf_counter()
-        process = subprocess.Popen([sys.executable, "-X", "utf8", "-u", str(CODE / "mr_mcp_server.py")],
+        bootstrap = ("import os,runpy,mr_corpus; "
+                     "mr_corpus.PDF_CACHE=os.environ['MR_VERIFY_PDF_CACHE']; "
+                     "snapshot=os.environ.get('MR_VERIFY_FROZEN'); "
+                     "[s.update(dir=os.path.join(snapshot,s['key'])) for s in mr_corpus.SOURCES] if snapshot else None; "
+                     "runpy.run_path('mr_mcp_server.py',run_name='__main__')")
+        process = subprocess.Popen([sys.executable, "-X", "utf8", "-u", "-c", bootstrap],
                                    cwd=CODE, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=stderr, text=True, encoding="utf-8")
         received = queue.Queue()
@@ -62,6 +77,7 @@ def main():
         reader = threading.Thread(target=read_lines, daemon=True)
         reader.start()
         request_id = 0
+        corpus_observations = []
 
         def request(method, params):
             nonlocal request_id
@@ -82,6 +98,8 @@ def main():
             assert data["ok"]
             if name == "memory_search":
                 assert data["mode"] == arguments.get("mode", "hybrid"), "MCP silently fell back"
+                corpus_observations.append({"request_id":request_id,"sha256":data.get("corpus_sha256"),
+                                            "audit":data.get("corpus_audit")})
             return data
 
         try:
@@ -98,8 +116,15 @@ def main():
             save()
             print("MCP initialize/tools-list: stock, evaluation scope and paragraph lookup declared", flush=True)
 
+            if args.first_search=="hybrid":
+                first=call("memory_search",{"query":notes["queries"][0]["q"],"topk":5,"rerank":True})
+                report["latency"]={"first_search_ms":round((time.perf_counter()-process_started)*1000,2),
+                                   "first_search_kind":"new stdio process + default hybrid + base gate; PDF loaded",
+                                   "first_search_rerank":first.get("rerank")}
             found = call("memory_search", {"query": stock["queries"][0]["q"], "source": "stock", "mode": "bm25", "topk": 1, "rerank": False})
-            report["latency"] = {"first_search_ms": round((time.perf_counter() - process_started) * 1000, 2)}
+            if args.first_search=="stock-bm25":
+                report["latency"] = {"first_search_ms": round((time.perf_counter() - process_started) * 1000, 2),
+                                     "first_search_kind":"new stdio process + stock BM25 rerank=false; includes server warmup"}
             selected = found["hits"][0]
             checks["stock_search"] = selected["source"] == "stock"
             fetched = call("memory_get", {"file": selected["file"], "source": "stock"})
@@ -167,10 +192,11 @@ def main():
             # Sequential warm observations with no result cache in this client.
             # Run this verifier separately from the paired quality benchmark.
             latency_rows = []
-            timed_cases = [direct] + [q for q in evidence["queries"] if not q["expect"]]
+            timed_cases = [dict(notes["queries"][i],id="p%02d" % (i+1)) for i in (0,1,3,7,8,13,18,22)]
+            timed_cases += [dict(negatives["queries"][i],id="n%02d" % (i+1)) for i in (0,3,5,9)]
             for q in timed_cases:
                 call("memory_search", {"query": q["q"], "topk": 5, "rerank": True})
-            for repeat in range(2):
+            for repeat in range(3):
                 for q in timed_cases:
                     start = time.perf_counter()
                     found = call("memory_search", {"query": q["q"], "topk": 5, "rerank": True})
@@ -178,16 +204,30 @@ def main():
                     latency_rows.append({"id": q["id"], "repeat": repeat + 1,
                                          "total_ms": round((time.perf_counter() - start) * 1000, 2),
                                          "rerank_ms": rr.get("ms"), "pairs": rr.get("pairs"),
-                                         "extra_passages": rr.get("extra_passages", 0), "confidence": found["confidence"]})
+                                         "max_length":rr.get("max_length"),"initial_candidates":rr.get("initial_candidates"),
+                                         "max_windows":rr.get("max_windows"),"scored_candidates":rr.get("n"),
+                                         "expanded_candidates":rr.get("expanded_candidates",0),
+                                         "extra_passages": rr.get("extra_passages", 0), "confidence": found["confidence"],
+                                         "corpus_sha256":found.get("corpus_sha256")})
             elapsed = sorted(row["total_ms"] for row in latency_rows)
             p50, p95 = statistics.median(elapsed), elapsed[math.ceil(.95 * len(elapsed)) - 1]
             budget_ok = p50 <= 2000 and p95 <= 4000 and report["latency"]["first_search_ms"] <= 60000
             report["latency"].update({"warm_samples": len(elapsed), "warm_p50_ms": round(p50, 2),
                                       "warm_p95_ms": round(p95, 2), "samples": latency_rows,
+                                      "distinct_queries":len(timed_cases), "quantile_method":"nearest-rank; repeated queries are not independent population samples",
                                       "budget": {"warm_p50_ms": 2000, "warm_p95_ms": 4000, "first_search_ms": 60000},
                                       "budget_status": "达标" if budget_ok else "未达标，性能优化待办"})
             print(json.dumps({"latency": {k: v for k, v in report["latency"].items() if k != "samples"}}, ensure_ascii=False), flush=True)
             checks["code_unchanged_during_mcp_test"] = all(hashlib.sha256((CODE / name).read_bytes()).hexdigest() == digest for name, digest in report["code_sha256"].items())
+            report["corpus_observations"] = corpus_observations
+            fingerprints = {r["sha256"] for r in corpus_observations}
+            report["corpus_stable_during_mcp"] = bool(corpus_observations) and None not in fingerprints and len(fingerprints) == 1
+            checks["each_search_reports_corpus_identity"] = None not in fingerprints
+            checks["ordinary_note_budget_visible_in_real_mcp"] = all(
+                row["max_length"]==256 and row["initial_candidates"]==3 and row["max_windows"]==2
+                and row["scored_candidates"]<=5 for row in latency_rows)
+            if args.frozen:
+                checks["frozen_mcp_corpus_stable"] = report["corpus_stable_during_mcp"]
             report["passed"] = all(checks.values())
             save()
             print(json.dumps({"passed": report["passed"], "checks": checks, "output": str(args.output)}, ensure_ascii=False), flush=True)
