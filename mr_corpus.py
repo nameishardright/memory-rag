@@ -197,8 +197,8 @@ def chunk_key(fn, heading, body):
 OVERLAP = 150
 
 # 凭据脱敏:值抹掉、键留着——搜"哪里有key"仍可命中,但值不进索引/不出工具
-RE_CRED = re.compile(r"(?i)(?<![\w-])(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([^\s,;}`]+)")
-RE_QUOTED_CRED = re.compile(r"(?i)(?<![\w-])(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([\"'])(.*?)(\3)")
+RE_CRED = re.compile(r"(?i)(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([^\s,;}`]+)")
+RE_QUOTED_CRED = re.compile(r"(?i)(password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥)([\"']?\s*[:=：]\s*)([\"'`])(.*?)(\3)")
 RE_INLINE_LOGIN = re.compile(r"`([A-Za-z0-9_.@-]{1,64}):([^`\s:<>]{6,})`")
 RE_URL_LOGIN = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)([^\s/@]+)(@)")
 RE_AUTH_HEADER = re.compile(r"(?i)(\b(?:Authorization|Proxy-Authorization)[\"']?\s*[:=]\s*[\"']?(?:Basic|Bearer)\s+)([^\s\"'`,;}]+)")
@@ -230,8 +230,7 @@ def redact_values(value):
     if isinstance(value, list):
         return [redact_values(item) for item in value]
     if isinstance(value, dict):
-        return {key: ('<REDACTED>' if re.fullmatch(
-            r'(?i)password|passwd|pwd|secret|token|api[_-]?key|accesskey|密码|口令|密钥', key)
+        return {key: ('<REDACTED>' if RE_CRED.search(key + '=placeholder')
                      else redact_values(item)) for key, item in value.items()}
     return value
 

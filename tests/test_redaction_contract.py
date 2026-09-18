@@ -22,9 +22,25 @@ class RedactionContractTests(unittest.TestCase):
         clean=mr_corpus.redact(raw)
         self.assertEqual(json.loads(clean),{'password':'<REDACTED>','api_key':'<REDACTED>','count':2})
 
+    def test_markdown_backtick_values_are_redacted(self):
+        text='API_KEY: `Example12345`，password: `example with spaces`'
+        clean=mr_corpus.redact(text)
+        self.assertNotIn('Example12345',clean)
+        self.assertNotIn('example with spaces',clean)
+        self.assertEqual(mr_corpus.redact(clean),clean)
+
     def test_ports_timestamps_and_token_counts_are_not_credentials(self):
         text='`example.com:47021` 19:57:53 http://example.com:8080 token_count=512 max_tokens=2048'
         self.assertEqual(mr_corpus.redact(text),text)
+
+    def test_compound_credential_names_keep_legacy_redaction_coverage(self):
+        text='access_token=Demo12345 OPENAI_API_KEY="Example12345" X-API-Key: ThirdExample678'
+        clean=mr_corpus.redact(text)
+        self.assertNotIn('Demo12345',clean)
+        self.assertNotIn('Example12345',clean)
+        self.assertNotIn('ThirdExample678',clean)
+        nested=mr_corpus.redact_values({'access_token':'Demo12345','OPENAI_API_KEY':'Example12345','token_count':512})
+        self.assertEqual(nested,{'access_token':'<REDACTED>','OPENAI_API_KEY':'<REDACTED>','token_count':512})
 
     def test_auth_headers_and_redaction_are_idempotent(self):
         text='Authorization: Bearer Demo12345\n新账号 `reader:Example12345`\npassword="another example"'
