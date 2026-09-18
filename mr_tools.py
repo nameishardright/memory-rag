@@ -539,7 +539,7 @@ REGISTRY = {
                 "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"
                 "low 表示证据不足,别硬凑。hybrid 每条带 legs(词法/语义名次);优先返回同文件正文,仅有索引块时标 evidence_kind=navigation。"
                 "snippet 是预览,引用前用 memory_get(file,source,heading,chunk_md5) 看完整段落；chunk_md5 可精确定位同名标题并拒绝过期片段。或省略 heading/指纹看全文。"
-                "写好引用后可用 memory_check_answer 逐句查数字、日期和周期；检查通过仍需阅读原文确认结论含义。"
+                "形成带引用的结论后调用 memory_check_answer 逐句查数字、日期和周期；发现问题先修正，检查通过仍需阅读原文确认结论含义。"
                 "评测复盘默认排除;检索评测方法/运行复盘时用 include_evaluation=true,结果会标 purpose=evaluation。"
                 "查询技巧:①语料以中文为主,查询用中文(英文短查询两条腿都弱——向量模型是中文特化的);"
                 "②用意图里的罕见词问(如 直合/cherry-pick),别堆高频实体词(gerrit/合入 满语料都是,零区分度);"

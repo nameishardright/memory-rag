@@ -76,6 +76,13 @@ class StockMatchingTests(unittest.TestCase):
                 self.assertEqual(result["stock_filter"], {})
                 self.assertEqual(len({h["file"] for h in result["hits"]}), 2)
 
+    def test_dated_news_question_is_not_silently_limited_to_cards(self):
+        self.card("card_TEST#short_2026-09-17.md")
+        (self.root/'event-expansion.md').write_text("## 公告\nTEST 2026-09-17 宣布扩产。",encoding='utf-8')
+        result=self.search("TEST 2026-09-17 宣布扩产的公告是什么？")
+        self.assertEqual(result['stock_filter'],{})
+        self.assertIn('event-expansion.md',[h['file'] for h in result['hits']])
+
     def test_explicit_filter_and_invalid_filter_are_observable(self):
         self.card("card_UBER#mid_2026-09-17.md")
         result = self.search("入场 止损", stock_filter={"ticker": "uber", "horizon": "mid"})

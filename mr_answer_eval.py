@@ -276,6 +276,21 @@ must decide negation, paraphrases and any additional assertions it cannot judge.
     def passage_key(quote):
         return (quote['id'], quote['source'], quote['file'], quote['heading'])
 
+    def pool_quotes(indexes):
+        passages = {}
+        for i in indexes:
+            for quote in claim_citations[i]:
+                key = passage_key(quote)
+                if key not in passages:
+                    passages[key] = dict(quote)
+                else:
+                    passages[key]['snippet'] += '\n' + quote['snippet']
+        return passages
+
+    def proven_passages(passages, fact):
+        return {key for key, quote in passages.items() if any(
+            mr_eval.matches_passage(quote, label) for label in fact['evidence'])}
+
     for fact in facts:
         claim_indexes = [i for i, c in enumerate(answer["claims"])
                          if contains_terms(c["text"], fact["claim_terms"])]
@@ -286,17 +301,18 @@ must decide negation, paraphrases and any additional assertions it cannot judge.
         # statement elsewhere cannot donate its citation to a misquoted claim.
         contributors = claim_indexes or [i for i, c in enumerate(answer["claims"]) if any(
             contains_terms(c["text"], [group]) for group in fact["claim_terms"])]
-        quoted_passages = {}
-        for i in contributors:
-            for quote in claim_citations[i]:
-                key = passage_key(quote)
-                if key not in quoted_passages:
-                    quoted_passages[key] = dict(quote)
-                else:
-                    quoted_passages[key]['snippet'] += '\n' + quote['snippet']
-        proven = {key for key, quote in quoted_passages.items() if any(
-            mr_eval.matches_passage(quote, label) for label in fact['evidence'])}
-        supported = [i for i in contributors if any(passage_key(q) in proven for q in claim_citations[i])]
+        proven = proven_passages(pool_quotes(contributors), fact)
+        if claim_indexes:
+            # Complete assertions each need complete support in their OWN
+            # quotes, even when another claim cites the very same paragraph.
+            supported = [i for i in contributors if proven_passages(pool_quotes([i]), fact)]
+        else:
+            # Distributed facts may combine partial statements, but a partial
+            # statement still needs its own quoted terms and source identity.
+            supported = [i for i in contributors if any(passage_key(q) in proven for q in claim_citations[i])
+                         and contains_terms('\n'.join(q['snippet'] for q in claim_citations[i]
+                                                       if passage_key(q) in proven),
+                                            [g for g in fact['claim_terms'] if contains_terms(answer['claims'][i]['text'],[g])])]
         if fact_mentioned and proven and len(supported) == len(contributors):
             grounded.append(fact["id"])
             mapped_claims.update(supported)

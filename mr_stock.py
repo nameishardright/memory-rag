@@ -77,6 +77,8 @@ can supply an explicit identity when natural-language scope is ambiguous.
     horizons = {key for key, aliases in HORIZONS.items()
                 if re.search(r"\b" + key + r"\b", query, re.I)
                 or any(alias in query for alias in aliases.split())}
+    if not horizons and not re.search(r"卡|计划|复核|历史判断|入场|止损|站上|三个数", query):
+        return {}  # a dated company news/event question is not a card lookup
     if (len(tickers) != 1 or len(dates) > 1 or len(horizons) > 1
             or not (dates or horizons)
             or re.search(r"以来|之前|之后|以前|以后|截至|至今|期间|对比|比较|对照|since|before|after|between"

@@ -80,11 +80,16 @@ def _clauses(text):
     return [p for p in re.split(r"[，；;。!?！？\n]|(?<!\d),(?!\d)", text) if p.strip()]
 
 
+def _factual_fragments(text):
+    for sentence in sentences(text):
+        for part in re.split(r"但是|但|不过|然而|\bbut\b|\bhowever\b", sentence, flags=re.I):
+            if not _CONDITIONAL.search(part):
+                yield part
+
+
 def _outcomes(text):
     facts = set()
-    for sentence in sentences(text):
-        if _CONDITIONAL.search(sentence):
-            continue
+    for sentence in _factual_fragments(text):
         for clause in _clauses(sentence):
             for match in _OUTCOME.finditer(clause):
                 prefix = re.split(r"但是|但|不过", clause[:match.start()])[-1]
@@ -96,37 +101,66 @@ def _outcomes(text):
     return facts
 
 
+def _source_envelope(context, quote):
+    """Recover complete intersecting sentences even if a quote spans several."""
+    source = normal(context['text'])
+    start = source.find(normal(quote))
+    end, cursor, enclosing = start + len(normal(quote)), 0, []
+    for sentence in sentences(context['text']):
+        part = normal(sentence)
+        pos = source.find(part, cursor)
+        if pos < 0:
+            continue
+        cursor = pos + len(part)
+        if pos < end and cursor > start:
+            enclosing.append(sentence)
+    return '\n'.join(enclosing)
+
+
 def _quoted_outcomes(accepted):
     facts = set()
     for context, quote in accepted:
         # A cropped quote must not turn an if-clause/uncertain statement into
         # an observed outcome. Recheck its containing source sentence as well.
-        envelopes = [s for s in sentences(context["text"]) if normal(quote) in normal(s)]
         allowed = _outcomes(quote)
-        if envelopes:
-            allowed &= set().union(*(_outcomes(s) for s in envelopes))
+        allowed &= _outcomes(_source_envelope(context, quote))
         facts.update(allowed)
     return facts
 
 
-def _price_date_supported(sentence, accepted):
-    """Bind the same numeric value AND observation date in one quoted clause.
+def _price_units(text, context=None):
+    """Only unambiguous date/metric/value triples are automatically supported.
 
-Card filenames date the document, not every price within it. When a quote uses
-relative dates or compressed tables, abstain from automatic certification.
+A date before a comma carries through that sentence. Several dates or metrics
+in one unsplit clause need review; set membership cannot establish pairing.
 """
-    quoted = [(context,clause) for context, quote in accepted for clause in _clauses(quote)]
-    for clause in _clauses(sentence):
-        metric = _PRICE.search(clause)
-        if not metric or not numbers(clause) or _PRICE_CONDITION.search(clause):
-            continue
-        label = "收" if metric.group() in {"收盘", "收在"} else metric.group()
-        wanted_dates = dates(clause)
-        for value in numbers(clause):
-            candidates = [(c,q) for c,q in quoted if value in numbers(q) and label in q and dates(q)]
-            if not any(all(any(_same_date(a,b) for b in _context_dates(c,q)) for a in wanted_dates)
-                       for c,q in candidates):
-                return False
+    for fragment in _factual_fragments(text):
+        current_dates = set()
+        for clause in re.split(r"[、，；;。!?！？\n]|(?<!\d),(?!\d)", fragment):
+            explicit = _context_dates(context,clause) if context else dates(clause)
+            if explicit:
+                current_dates = explicit
+            metrics = list(_PRICE.finditer(clause))
+            if not metrics or not numbers(clause) or _PRICE_CONDITION.search(clause):
+                continue
+            labels = {'收盘' if m.group() == '收在' else m.group() for m in metrics}
+            value = re.match(r"[\s价为是报收记作：:约≈$￥¥]*([-+]?\d+(?:,\d{3})*(?:\.\d+)?)",
+                             clause[metrics[0].end():])
+            if len(current_dates) != 1 or len(labels) != 1 or len(metrics) != 1 or value is None:
+                yield None  # ambiguous is not a proven price observation
+            else:
+                yield (next(iter(current_dates)), next(iter(labels)), Decimal(value[1].replace(',','')))
+
+
+def _price_date_supported(sentence, accepted):
+    proven = set()
+    for context, quote in accepted:
+        units = set(_price_units(quote,context))
+        units &= set(_price_units(_source_envelope(context,quote),context))
+        proven.update(unit for unit in units if unit is not None)
+    for wanted in _price_units(sentence):
+        if wanted is None or not any(_same_date(wanted[0],p[0]) and wanted[1:] == p[1:] for p in proven):
+            return False
     return True
 
 
@@ -154,7 +188,7 @@ def check_answer(answer, contexts, question=""):
             if stock:
                 scopes = {mr_stock.card_identity(c["file"]) for c, _ in accepted if c.get("source") == "stock"}
                 scopes.discard(())
-                if (requested_scope and re.search(r"只|限定|那张|这张", question)
+                if (requested_scope
                         and any(any(dict(scope).get(k) != v for k,v in requested_scope.items()) for scope in scopes)):
                     problems.append(("outside_requested_card", "本句引用不属于问题明确限定的股票卡片；不能用其他日期或周期代替。"))
                 if len(scopes) > 1:

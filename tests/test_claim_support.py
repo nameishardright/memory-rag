@@ -38,6 +38,19 @@ class ClaimSupportTests(unittest.TestCase):
         self.assertFalse(result["checks_pass"])
         self.assertIn("price_date_not_bound", [i["code"] for i in result["issues"]])
 
+    def test_date_comma_price_still_binds_to_that_date(self):
+        c=evidence(text='2026-09-16 收盘 123.5；2026-09-17 收盘 119.2。')
+        self.assertFalse(self.check('2026-09-17，收盘为 123.5。',[c])['checks_pass'])
+        self.assertTrue(self.check('2026-09-17，收盘为 119.2。',[c])['checks_pass'])
+
+    def test_multi_date_or_multi_metric_quote_cannot_supply_arbitrary_pairs(self):
+        cases=[('2026-09-16 和 2026-09-17 收盘分别为 123.5 和 119.2。','2026-09-16 收盘为 119.2。'),
+               ('2026-09-17 收盘123.5、开盘119.2。','2026-09-17 收盘119.2。'),
+               ('如果 2026-09-17 收盘123.5 就买入。','2026-09-17 收盘123.5。')]
+        for quote,claim in cases:
+            with self.subTest(quote=quote):
+                self.assertFalse(self.check(claim,[evidence(text=quote)])['checks_pass'])
+
     def test_two_real_numbers_cannot_be_swapped_between_dates(self):
         c = evidence(text="2026-09-16 收盘 123.5；2026-09-17 收盘 119.2。")
         result = self.check("2026-09-16 收盘 119.2；2026-09-17 收盘 123.5。", [c])
@@ -76,6 +89,9 @@ class ClaimSupportTests(unittest.TestCase):
         result = mr_support.check_answer(answer("参考止损 80。",c['text']), [c],
                                          "只看 TEST 2026-09-17 短线卡的止损。")
         self.assertIn("outside_requested_card", [i["code"] for i in result["issues"]])
+        result=mr_support.check_answer(answer('参考止损 80。',c['text']),[c],
+                                       'TEST 2026-09-17 短线卡的止损是什么？')
+        self.assertFalse(result['checks_pass'])
 
     def test_later_confirmation_cannot_be_added_to_an_earlier_card_quote(self):
         c = evidence(file="card_TEST#mid_2026-09-16.md", text="100 单日击穿，待确认。")
@@ -99,6 +115,7 @@ class ClaimSupportTests(unittest.TestCase):
     def test_uncertainty_in_another_clause_does_not_waive_outcome_check(self):
         result = self.check("无法知道成交数量，但两条腿都尚未到位。", [evidence()])
         self.assertFalse(result["checks_pass"])
+        self.assertFalse(self.check('如果以后回踩再复核，但整个窗口未触发。',[evidence()])['checks_pass'])
 
     def test_negated_or_conditional_quote_does_not_prove_execution(self):
         for text in ["截至复核时未成交。", "如果触发，那么已经成交才记账。"]:
@@ -113,6 +130,9 @@ class ClaimSupportTests(unittest.TestCase):
         c = evidence(text="如果已经成交，才登记执行结果。")
         result = self.check("已经成交。", [c], [{"evidence_id":"e1", "quote":"已经成交"}])
         self.assertFalse(result["checks_pass"])
+        c=evidence(text='如果已经成交，才登记执行结果。注意后续复核。')
+        result=self.check('已经成交。',[c],[{'evidence_id':'e1','quote':'已经成交，才登记执行结果。注意后续复核。'}])
+        self.assertFalse(result['checks_pass'])
 
     def test_a_required_fact_cannot_borrow_an_unrelated_claims_citation(self):
         from test_answer_evaluation import fixture
@@ -121,6 +141,15 @@ class ClaimSupportTests(unittest.TestCase):
         a["claims"][0]["citations"] = [{"evidence_id":"e2", "quote":other["text"]}]
         a["claims"].append({"text":"还有背景材料。", "citations":[{"evidence_id":"e1", "quote":c["text"]}]})
         self.assertFalse(ae.grade_answer(q,a,[c,other])["contract_pass"])
+
+    def test_same_passage_identity_cannot_hide_a_wrong_quote_in_another_claim(self):
+        from test_answer_evaluation import fixture
+        q,c,a=fixture()
+        c['text']='推断结果只配60秒TTL。60 只是另一条日志的编号。'
+        a['claims'][0]['citations']=[{'evidence_id':'e1','quote':'60 只是另一条日志的编号。'}]
+        a['claims'].append({'text':'资料规定推断结果只配60秒TTL。',
+                            'citations':[{'evidence_id':'e1','quote':'推断结果只配60秒TTL。'}]})
+        self.assertFalse(ae.grade_answer(q,a,[c])['contract_pass'])
 
     def test_review_must_cover_every_sentence_and_cannot_hide_a_bad_one(self):
         a = answer("参考价 105。两条腿都尚未到位。", evidence()["text"])
