@@ -3,6 +3,9 @@
 工具永不抛异常:查不到/降级都是正常返回值,让调用方(人或模型)自己决策。
 """
 import os
+import hashlib
+import json
+from pathlib import Path
 import re
 import sys
 import threading
@@ -29,9 +32,10 @@ GATE_MODE = os.environ.get("MR_GATE", "note").lower()
 # ── 重排(项 7):MR_RERANK=<预设> 进程默认开;memory_search(rerank=) 单次 True/False/<预设>;只重排融合榜前 RERANK_N 个候选(消费单元级)。
 RERANK_MODE = os.environ.get("MR_RERANK_MODE", "gate").lower()   # gate=只定置信不动顺序(默认,标定过) | rerank=按 cross-encoder 分重排(对照用)
 RERANK_N = int(os.environ.get("MR_RERANK_N", "15"))               # rerank 模式打分的候选数
-RERANK_G = int(os.environ.get("MR_RERANK_G", "5"))                # gate 模式打分的候选数(= 返回给调用方的前几条)
-RERANK_WIN = int(os.environ.get("MR_RERANK_WIN", "450"))          # 段落开窗(字符):cross-encoder 512 token 对中文≈480 字,超出的部分模型看不见
-RERANK_MAXWIN = int(os.environ.get("MR_RERANK_MAXWIN", "3"))      # 每块最多几窗(取最大分);3 窗覆盖 1350 字≈MAX_CHUNK
+RERANK_G = int(os.environ.get("MR_RERANK_G", "3"))                # base 初评前三个;弱证据时最多补到原前五个
+RERANK_WIN = int(os.environ.get("MR_RERANK_WIN", "450"))          # 字符窗口;token 截断预算独立,实际值随 rerank 结果返回
+RERANK_MAXWIN = int(os.environ.get("MR_RERANK_MAXWIN", "2"))      # base 每块两窗;其他模型保留各自预设
+RERANK_FALLBACK_G = int(os.environ.get("MR_RERANK_FALLBACK_G", "5"))
 MIN_BM25 = {"notes": float(os.environ.get("MR_MIN_BM25", "8")), "pdf": float(os.environ.get("MR_MIN_BM25_PDF", "12"))}
 
 LOG_PATH = os.path.join(mr_index.CACHE, "query-log.jsonl")
@@ -69,6 +73,26 @@ def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     chunks = mr_corpus.load_chunks()
     _STATE["chunks"] = chunks
+    # Observability only: never use gold labels to filter, score or classify a hit.
+    # Warn again after each changed corpus, including startup; failures do not
+    # make everyday retrieval unavailable. Evaluation retains its strict gate.
+    import mr_eval
+    started = time.perf_counter()
+    try:
+        audit = mr_eval.require_clean_corpus(chunks, mr_eval.load_goldens(Path(mr_corpus.BASE) / "golden"))
+        status, count = "clean", 0
+    except mr_eval.CorpusContaminationError as exc:
+        status, count = "warning", len(exc.audit["findings"])
+        print("[corpus-audit] %d unmarked chunks contain a known evaluation question; run mr.py audit-corpus" % count,
+              file=sys.stderr)
+    except (OSError, ValueError, KeyError, TypeError):
+        status, count = "unavailable", None
+        print("[corpus-audit] audit unavailable; retrieval continues without a clean-corpus claim", file=sys.stderr)
+    _STATE["corpus_audit"] = {"status": status, "findings": count,
+                              "ms": round((time.perf_counter() - started) * 1000, 2)}
+    _STATE["corpus_sha256"] = hashlib.sha256(json.dumps(
+        [(c["source"], c["md5"], c.get("purpose", "knowledge")) for c in chunks],
+        ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     notes_idx = [i for i, c in enumerate(chunks) if c["source"] in mr_corpus.NOTE_SOURCES]
     ordinary_idx = [i for i in notes_idx if chunks[i].get("purpose") != "evaluation"]
     nonpdf_idx = [i for i, c in enumerate(chunks) if c["source"] != "pdf"]
@@ -119,23 +143,30 @@ def _snippet(text, query, width=300):
     return "…" + text[start:start + width]
 
 
-def _get_reranker(key):
-    """按预设名缓存在 _STATE["rerankers"] 里;模型懒加载,首次打分时才占内存。"""
-    spec = mr_index.reranker_spec(key if isinstance(key, str) else None)
+def _get_reranker(key, legacy=False):
+    """按模型与预算缓存实例;同一模型的预算变体共享权重,首次评分时才加载。"""
+    spec = mr_index.reranker_spec(key if isinstance(key, str) else None,legacy=legacy)
     if spec is None:
         return None
     with _LOCK:
         rs = _STATE.setdefault("rerankers", {})
-        if spec["key"] not in rs:
-            rs[spec["key"]] = mr_index.Reranker(spec)
-        return rs[spec["key"]]
+        model_path = os.path.normcase(os.path.realpath(spec["local"]))
+        cache_key = (model_path,spec["key"],spec.get("max_length",512),spec.get("gate_candidates",5),
+                     spec.get("max_windows",3),spec.get("fallback_candidates",5))
+        if cache_key not in rs:
+            instance = mr_index.Reranker(spec)
+            instance._model = next((other._model for other in rs.values()
+                                    if os.path.normcase(os.path.realpath(other.spec["local"]))==model_path
+                                    and other._model is not None),None)
+            rs[cache_key] = instance
+        return rs[cache_key]
 
 
-def _windows(c):
+def _windows(c, max_windows=None):
     """一块切成最多 RERANK_MAXWIN 个 450 字窗口,每窗都带文件名+标题;分数取窗口最大值——答案在块中后段时不至于被截掉。"""
     head = "%s\n%s\n" % (c["file"], c["heading"])
     body = c["text"] or ""
-    out = [head + body[s0:s0 + RERANK_WIN] for s0 in range(0, max(1, len(body)), RERANK_WIN)][:RERANK_MAXWIN]
+    out = [head + body[s0:s0 + RERANK_WIN] for s0 in range(0, max(1, len(body)), RERANK_WIN)][:max_windows or RERANK_MAXWIN]
     return out or [head]
 
 
@@ -224,22 +255,43 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     rr = None
     want_rr = (rerank if rerank is not None else bool(os.environ.get("MR_RERANK")))
     if want_rr and ranked:
-        rk = _get_reranker(rerank if isinstance(rerank, str) else None)
+        rk = _get_reranker(rerank if isinstance(rerank, str) else None,
+                           legacy=not allowed <= mr_corpus.NOTE_SOURCES)
         if rk is None:
             note = (note + ";" if note else "") + "重排未配置(MR_RERANK 或 rerank=<预设>)"
         elif not rk.available:
             note = (note + ";" if note else "") + "重排不可用(%s),按融合榜返回" % rk.err
         else:
-            cand = [row for row in ranked if keep(row[0])][:(RERANK_N if RERANK_MODE == "rerank" else RERANK_G)]
+            budget = rk.spec.get("gate_candidates",RERANK_G)
+            max_windows = rk.spec.get("max_windows",RERANK_MAXWIN)
+            fallback_budget = rk.spec.get("fallback_candidates",RERANK_FALLBACK_G)
+            eligible = [row for row in ranked if keep(row[0])]
+            cand = eligible[:(RERANK_N if RERANK_MODE == "rerank" else min(budget,topk))]
             t0 = time.time()
             pairs, owner = [], []
             for j, row in enumerate(cand):
-                for w in _windows(chunks[row[0]]):
+                for w in _windows(chunks[row[0]],max_windows):
                     pairs.append(w)
                     owner.append(j)
             ws = rk.score(query, pairs)
             scores = [max(sw for sw, o in zip(ws, owner) if o == j) for j in range(len(cand))]
             hi, lo = rk.spec.get("hi"), rk.spec.get("lo")
+            expanded_candidates = 0
+            if RERANK_MODE == "gate" and lo is not None and scores and max(scores) < lo:
+                # A smaller initial budget must not call a question unanswerable
+                # while an already returned fourth/fifth candidate has evidence.
+                tail = eligible[len(cand):min(fallback_budget,topk)]
+                extra_pairs, extra_owner = [], []
+                for j,row in enumerate(tail):
+                    for window in _windows(chunks[row[0]],max_windows):
+                        extra_pairs.append(window)
+                        extra_owner.append(j)
+                if extra_pairs:
+                    extra_scores = rk.score(query,extra_pairs)
+                    scores.extend(max(s for s,o in zip(extra_scores,extra_owner) if o==j) for j in range(len(tail)))
+                    cand.extend(tail)
+                    pairs.extend(extra_pairs)
+                    expanded_candidates = len(tail)
             extra_passages = 0
             if (RERANK_MODE == "gate" and leg_names and hi is not None and lo is not None and
                     scores and max(scores) < hi):
@@ -259,7 +311,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
                                 if scores[j] < lo and unit_key(row[0]) in lexical and lexical[unit_key(row[0])] != row[0]]
                 extra, owners = [], []
                 for j, i in alternatives:
-                    for window in _windows(chunks[i]):
+                    for window in _windows(chunks[i],max_windows):
                         extra.append(window)
                         owners.append(j)
                 if extra:
@@ -283,7 +335,10 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             else:   # gate:顺序不动,把分挂到对应块上
                 _rr_scores = {cand[j][0]: scores[j] for j in range(len(cand))}
             rr = {"model": rk.spec["key"], "mode": RERANK_MODE, "n": len(cand), "pairs": len(pairs), "top": round(max(scores), 3),
-                  "extra_passages": extra_passages, "ms": int((time.time() - t0) * 1000)}
+                  "extra_passages": extra_passages, "expanded_candidates":expanded_candidates,
+                  "max_length":rk.spec.get("max_length",512),"initial_candidates":budget,
+                  "max_windows":max_windows,"window_chars":RERANK_WIN,
+                  "ms": int((time.time() - t0) * 1000)}
             hi, lo = rk.spec.get("hi"), rk.spec.get("lo")
             if gate is not None and hi is not None and lo is not None:
                 lvl = "high" if rr["top"] >= hi else ("medium" if rr["top"] >= lo else "low")
@@ -326,7 +381,8 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
           "confidence": confidence, "gate": gate, "rerank": rr, "note": note or None,
           "include_evaluation": include_evaluation})
     return {"ok": True, "mode": mode, "tokenizer": mr_index.TOKENIZER, "model": used_model, "confidence": confidence,
-            "gate": gate, "rerank": rr, "note": note, "hits": hits}
+            "gate": gate, "rerank": rr, "note": note, "hits": hits,
+            "corpus_sha256": st.get("corpus_sha256"), "corpus_audit": st.get("corpus_audit")}
 
 
 def memory_get(file, source=None, heading=None):
@@ -364,7 +420,8 @@ def _memory_get(file, source=None, heading=None):
             purposes = mr_corpus.load_purposes()
             purpose = mr_corpus.document_purpose(src["key"], os.path.basename(file), text, purposes)
             if heading is not None:
-                blocks = [block for h in mr_corpus._split_heading(text) for block in mr_corpus._hard_wrap(*h)]
+                blocks = [block for h in mr_corpus._split_heading(text)
+                          for block in mr_corpus._hard_wrap(*h, strategy=mr_corpus.chunk_strategy(src["key"]))]
                 requested = heading.strip()
                 matches = [block for block in blocks if block[0] == requested]
                 if not matches and requested:
@@ -404,7 +461,7 @@ REGISTRY = {
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
             "include_evaluation": {"type": "boolean", "description": "默认 false,排除标记为 evaluation 的评测复盘;查评测方法/复盘时设 true。样例问题不等于事实答案"},
             "rerank": {"anyOf": [{"type": "boolean"}, {"type": "string", "enum": list(mr_index.RERANKERS)}],
-                       "description": "可选,开关或 cross-encoder 预设名;默认跟 MR_RERANK。默认 gate 模式评分前 5 条;置信不足时每个文件最多补评一段词法正文,可换成证据更强的段落。文件顺序和 score 不变,另给 rerank 分与 confidence;"
+                       "description": "可选,开关或 cross-encoder 预设名;默认跟 MR_RERANK。普通笔记 base gate 先评前 3 条,低于 lo 时最多补到原前 5 条（不超过 topk）;PDF/stock 保留原五候选预算。每个文件最多补评一段词法正文。文件顺序和 score 不变,另给 rerank 分与 confidence;"
                                       "仅服务端 MR_RERANK_MODE=rerank 时评分前 15 条并按该分重排(候选数可由环境变量调整)"},
             "model": {"type": "string", "enum": list(mr_index.MODELS),
                       "description": "可选,向量腿用哪个 embedding 模型,单次切换;不传=服务端默认(MR_EMBED_MODEL,默认 bge-small-zh-v1.5;"

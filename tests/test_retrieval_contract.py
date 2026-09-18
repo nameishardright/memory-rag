@@ -93,6 +93,45 @@ class SearchContractTests(unittest.TestCase):
         self.assertIn("tools/call", result["hits"][0]["snippet"])
         self.assertEqual(result["confidence"], "medium")
 
+    def _budget_result(self, answer_index, topk=5):
+        chunks = [chunk("case", "file-%d.md" % i,"Body","correct-marker" if i==answer_index else "background")
+                  for i in range(6)]
+        order = [(i,10-i) for i in range(6)]
+        vector = SimpleNamespace(available=True,search=lambda *a,**kw:[(i,.8-i*.02) for i in range(6)])
+        calls=[]
+        def score(query,passages):
+            calls.extend(passages)
+            return [.9 if "correct-marker" in p else .01 for p in passages]
+        rk=SimpleNamespace(available=True,spec={"key":"fixture","hi":.5,"lo":.1,"gate_candidates":3,
+                           "fallback_candidates":5,"max_windows":2,"max_length":256},score=score)
+        with patch.object(mr_corpus,"load_chunks",return_value=chunks), \
+                patch.object(mr_tools,"_get_reranker",return_value=rk), patch.object(mr_tools,"RERANK_MODE","gate"):
+            state=mr_tools._ensure("bm25")
+            state["bm25"]=SimpleNamespace(search=lambda *a,**kw:order)
+            state["vecs"]={mr_index.model_spec()["slug"]:vector}
+            result=mr_tools.memory_search("fixture query",topk=topk,rerank=True)
+        return result,calls
+
+    def test_weak_first_three_expand_to_the_already_returned_fifth(self):
+        result,calls=self._budget_result(4)
+        self.assertEqual(result["confidence"],"high")
+        self.assertEqual(result["rerank"]["expanded_candidates"],2)
+        self.assertEqual(result["rerank"]["n"],5)
+        self.assertEqual(len(calls),5)
+        self.assertEqual([h["file"] for h in result["hits"]],["file-%d.md"%i for i in range(5)])
+
+    def test_strong_initial_candidate_does_not_pay_for_two_more(self):
+        result,calls=self._budget_result(0)
+        self.assertEqual(result["confidence"],"high")
+        self.assertEqual(result["rerank"]["expanded_candidates"],0)
+        self.assertEqual(len(calls),3)
+
+    def test_unreturned_candidate_cannot_raise_confidence(self):
+        result,calls=self._budget_result(4,topk=2)
+        self.assertEqual(result["confidence"],"low")
+        self.assertEqual(result["rerank"]["n"],2)
+        self.assertEqual(len(calls),2)
+
 
 class FusionContractTests(unittest.TestCase):
     def test_body_replaces_navigation_without_changing_file_ranks(self):

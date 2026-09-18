@@ -150,7 +150,7 @@ def load_pdf_chunks():
             if len(text) < MIN_PAGE_CHARS:
                 continue
             head = "p%d" % (i + 1)
-            for h, body in _hard_wrap(head, text):
+            for h, body in _hard_wrap(head, text, strategy=chunk_strategy("pdf")):
                 chunks.append({
                     "id": hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12],
                     "source": "pdf", "file": fn, "heading": h, "text": body,
@@ -162,7 +162,7 @@ def load_pdf_chunks():
 
 def signature():
     """语料指纹:所有源目录里 md 的 (名, mtime, size)+ 开着的 PDF 源 —— 变了就该重建索引(热更用)。"""
-    parts = []
+    parts = ["chunker|%s|%s|%d|%d" % (CHUNKER_VERSION, CHUNK_STRATEGY, MAX_CHUNK, OVERLAP)]
     if os.path.isfile(CORPUS_POLICY):
         st = os.stat(CORPUS_POLICY)
         parts.append("policy|%s|%d|%d" % (CORPUS_POLICY, st.st_mtime_ns, st.st_size))
@@ -174,7 +174,7 @@ def signature():
             if fn.endswith(".md") and fn not in DENY:
                 try:
                     st = os.stat(os.path.join(d, fn))
-                    parts.append("%s|%s|%d|%d" % (src["key"], fn, int(st.st_mtime), st.st_size))
+                    parts.append("%s|%s|%d|%d" % (src["key"], fn, st.st_mtime_ns, st.st_size))
                 except OSError:
                     pass
     if pdf_enabled():
@@ -183,6 +183,8 @@ def signature():
             parts.append("pdf|%s|%d|%d" % (os.path.basename(p), int(st.st_mtime), st.st_size))
     return hashlib.md5("\n".join(parts).encode()).hexdigest()
 MAX_CHUNK = 1500              # 字符;标题块超长再硬切
+CHUNKER_VERSION = "paragraph-v1"
+CHUNK_STRATEGY = os.environ.get("MR_CHUNK_STRATEGY", "paragraph")
 
 
 def chunk_key(fn, heading, body):
@@ -215,9 +217,59 @@ def _split_heading(text):
     return blocks
 
 
-def _hard_wrap(head, body):
+def chunk_strategy(source):
+    # Stock and PDF retain their established chunk boundaries. Ordinary-note
+    # chunking is measured independently; changing their IDF still needs a stock check.
+    return CHUNK_STRATEGY if source in NOTE_SOURCES else "character"
+
+
+def _paragraph_spans(body):
+    """Contiguous source spans, whole paragraphs first, then sentences/lines.
+
+    A single overlong sentence is the only character-cut fallback. Offsets keep
+    the original text recoverable without inserting or dropping characters.
+    """
+    ends = [m.end() for m in re.finditer(r"\n[ \t]*\n+", body)] + [len(body)]
+    units, start = [], 0
+    for end in ends:
+        while end - start > MAX_CHUNK:
+            segment = body[start:start + MAX_CHUNK]
+            boundaries = [m.end() for m in re.finditer(r"[。！？!?；;](?:[\"'”’])?\s*|(?<=\.)\s+|\n", segment)]
+            cut = start + (boundaries[-1] if boundaries else MAX_CHUNK)
+            units.append((start, cut))
+            start = cut
+        if end > start:
+            units.append((start, end))
+        start = end
+    spans, i = [], 0
+    while i < len(units):
+        j = i + 1
+        while j < len(units) and units[j][1] - units[i][0] <= MAX_CHUNK:
+            j += 1
+        spans.append((units[i][0], units[j - 1][1]))
+        if j == len(units):
+            break
+        # Whole trailing paragraph overlap; 150 is the target, at most 1/3 of
+        # the chunk, and always enough space for the next unseen unit.
+        budget = min(MAX_CHUNK // 3, MAX_CHUNK - (units[j][1] - units[j][0]))
+        k = j
+        while k > i + 1 and units[j - 1][1] - units[k - 1][0] <= budget:
+            k -= 1
+            if units[j - 1][1] - units[k][0] >= OVERLAP:
+                break
+        i = k
+    return spans
+
+
+def _hard_wrap(head, body, strategy=None):
+    strategy = strategy or CHUNK_STRATEGY
+    if strategy not in {"paragraph", "character"}:
+        raise ValueError("Unknown chunk strategy: " + strategy)
     if len(body) <= MAX_CHUNK:
         return [(head, body)]
+    if strategy == "paragraph":
+        return [("%s (%d)" % (head, n), body[start:end])
+                for n, (start, end) in enumerate(_paragraph_spans(body), 1)]
     out, i, n = [], 0, 1
     while i < len(body):
         out.append(("%s (%d)" % (head, n), body[i:i + MAX_CHUNK]))
@@ -246,7 +298,8 @@ def load_chunks():
             if src["redact"]:
                 text = redact(text)
             purpose = document_purpose(src["key"], fn, text, purposes)
-            for head, body in (hb for h in _split_heading(text) for hb in _hard_wrap(*h)):
+            for head, body in (hb for h in _split_heading(text)
+                               for hb in _hard_wrap(*h, strategy=chunk_strategy(src["key"]))):
                 chunks.append({
                     "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
                     "source": src["key"], "file": fn, "heading": head, "text": body,

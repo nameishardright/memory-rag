@@ -5,6 +5,7 @@
 import math
 import os
 import re
+import threading
 
 import mr_corpus
 
@@ -39,14 +40,15 @@ COMMON_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "speci
 
 
 # ── 重排模型(cross-encoder,2026-09-08 项 7):query 和候选段落拼在一起过一遍模型直接出相关分,比「两条腿各自的分」分得开。
-# 只对融合榜前 RERANK_N 个候选打分(每对一次前向,CPU 上 base 约 0.1-0.2s/对),所以它是第三级,不替代召回。
+# 只对融合榜前若干候选开窗打分。耗时受输入长度、padding、batch 和 CPU 负载影响，以受控实测为准。
 # hi / lo = 置信阈值(sigmoid 后 0-1),按 golden_negative 标定(2026-09-08:两个模型正例中位 ≥ .8、阴性中位 ≤ .05,.50/.10 两边都有余量);没标定的模型只打分不改置信。
 # 🔴 2026-09-08 标定结论:当**重排**用在两套金标上都掉分(笔记 hybrid .835→.692(base)/.764(v2-m3),PDF .917→.748/.817)——
 #    RRF 前几名已经是对的,cross-encoder 只看一个块的前 ~480 字、又偏爱「像答案」的段落,把对的文件往下压;当**置信信号**用却远比两腿分数门强。
 #    所以默认 MR_RERANK_MODE=gate(只打分定置信不动顺序),rerank 模式留作对照。
 RERANKERS = {
     "bge-reranker-base": {"id": "BAAI/bge-reranker-base", "weights": "model.safetensors", "extra": ["sentencepiece.bpe.model"],
-                          "hi": 0.50, "lo": 0.10, "note": "278M(xlm-roberta-base),中英,1.1GB"},
+                          "hi": 0.50, "lo": 0.10, "max_length": 256, "gate_candidates": 3, "max_windows": 2,
+                          "fallback_candidates": 5, "note": "278M(xlm-roberta-base),中英,1.1GB"},
     "bge-reranker-v2-m3": {"id": "BAAI/bge-reranker-v2-m3", "weights": "model.safetensors", "extra": ["sentencepiece.bpe.model"],
                            "hi": 0.50, "lo": 0.10, "note": "568M(bge-m3 底座),多语,2.27GB,比 base 慢约 2 倍"},
 }
@@ -54,7 +56,7 @@ _RR_ALIASES = {"rerank-base": "bge-reranker-base", "base": "bge-reranker-base", 
 RERANKER_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]
 
 
-def reranker_spec(key=None):
+def reranker_spec(key=None, legacy=False):
     key = (key or os.environ.get("MR_RERANK") or "").strip()
     if not key:
         return None
@@ -69,11 +71,28 @@ def reranker_spec(key=None):
         name = key.split("/")[-1]
         spec = {"key": name, "id": key, "local": os.path.join(MODELS_DIR, name), "weights": "model.safetensors", "extra": [], "hi": None, "lo": None, "note": "自定义"}
     spec["files"] = RERANKER_FILES + list(spec.get("extra", [])) + [spec["weights"]]
+    if legacy and spec["key"] == "bge-reranker-base":
+        # Short-input calibration covers ordinary notes. PDF/stock retain the
+        # original budget; long-page evidence must not disappear to save time.
+        spec.update(max_length=512,gate_candidates=5,max_windows=3,fallback_candidates=5)
+    for field,env,default in (("max_length","MR_RERANK_MAX_LENGTH",512),
+                              ("gate_candidates","MR_RERANK_G",5),
+                              ("max_windows","MR_RERANK_MAXWIN",3),
+                              ("fallback_candidates","MR_RERANK_FALLBACK_G",5)):
+        spec[field] = int(os.environ.get(env,str(spec.get(field,default))))
+    if not 32 <= spec["max_length"] <= 8192:
+        raise ValueError("MR_RERANK_MAX_LENGTH must be between 32 and 8192")
+    if not 1 <= spec["gate_candidates"] <= 15 or not 1 <= spec["max_windows"] <= 8:
+        raise ValueError("Reranker candidate/window budget is outside supported bounds")
+    if not spec["gate_candidates"] <= spec["fallback_candidates"] <= 15:
+        raise ValueError("Reranker fallback budget must cover the initial candidates and be <= 15")
     return spec
 
 
 class Reranker:
     """cross-encoder 打分器:score(query, passages) → [0-1]。权重缺失/依赖缺失 available=False,上层跳过重排并在 note 里说明。"""
+
+    _predict_lock = threading.Lock()
 
     def __init__(self, spec):
         self.spec, self.available, self.err, self._model = spec, False, "", None
@@ -89,12 +108,20 @@ class Reranker:
     def _get(self):
         if self._model is None:
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(model_path(self.spec), max_length=512)
+            self._model = CrossEncoder(model_path(self.spec), max_length=self.spec.get("max_length", 512))
         return self._model
 
     def score(self, query, passages, batch_size=16):
         import numpy as np
-        out = self._get().predict([(query, p) for p in passages], batch_size=batch_size, show_progress_bar=False)
+        # Budget variants share one weight object. Set token limits per call
+        # under a lock, so a PDF lookup cannot leave note queries at 512 tokens.
+        with self._predict_lock:
+            encoder = self._get()
+            if hasattr(encoder,"max_seq_length"):
+                encoder.max_seq_length = self.spec.get("max_length",512)
+            else:
+                encoder.max_length = self.spec.get("max_length",512)
+            out = encoder.predict([(query, p) for p in passages], batch_size=batch_size, show_progress_bar=False)
         out = np.asarray(out, dtype=float).reshape(-1)
         if out.size and (out.min() < 0 or out.max() > 1):   # 有的版本回 logit,统一成 0-1
             out = 1.0 / (1.0 + np.exp(-out))
