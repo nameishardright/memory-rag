@@ -69,6 +69,26 @@ class EvaluationContractTests(unittest.TestCase):
             mr_eval.validate_labels({"queries": [{"expect": ["x.md"], "evidence": [
                 {"source": "mem", "file": "x.md", "heading": "步骤", "required_text": [[""]]}]}]})
 
+    def test_full_pdf_page_covers_a_labelled_chunk_but_preview_does_not(self):
+        label={'source':'pdf','file':'guide.pdf','heading':'p20 (2)','required_text':['完整事实']}
+        page=hit('guide.pdf','p20','完整事实',source='pdf')
+        self.assertFalse(mr_eval.matches_passage(page,label))
+        page['evidence_scope']='pdf_page'
+        self.assertTrue(mr_eval.matches_passage(page,label))
+        page['snippet']='只有主题，没有所需的事实'
+        self.assertFalse(mr_eval.matches_passage(page,label))
+
+    def test_whole_page_does_not_cover_neighbour_or_similar_page_number(self):
+        label={'source':'pdf','file':'guide.pdf','heading':'p20 (2)','required_text':['完整事实']}
+        for heading in ['p21','p200','p20 (1)']:
+            page=dict(hit('guide.pdf',heading,'完整事实',source='pdf'),evidence_scope='pdf_page')
+            self.assertFalse(mr_eval.matches_passage(page,label))
+
+    def test_pdf_coverage_rule_does_not_flatten_markdown_headings(self):
+        label={'source':'book','file':'guide.md','heading':'p20 (2)','required_text':['完整事实']}
+        page=dict(hit('guide.md','p20','完整事实',source='book'),evidence_scope='pdf_page')
+        self.assertFalse(mr_eval.matches_passage(page,label))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -68,8 +68,16 @@ def _normal(text):
 
 def matches_passage(hit, label):
     """A passage must match its location AND every required fact in its preview."""
-    for key in ("source", "file", "heading"):
+    for key in ("source", "file"):
         if key in label and hit.get(key) != label[key]:
+            return False
+    if "heading" in label and hit.get("heading") != label["heading"]:
+        # A fetched complete PDF page contains its indexed wrapped chunks.
+        # This is not true for a preview or another Markdown heading.
+        actual = re.fullmatch(r"p(\d+)", hit.get("heading", ""))
+        expected = re.fullmatch(r"p(\d+)(?: \(\d+\))?", label["heading"])
+        if not (hit.get("evidence_scope") == "pdf_page" and hit.get("source") == "pdf"
+                and actual and expected and actual[1] == expected[1]):
             return False
     if label.get("heading_contains") and label["heading_contains"] not in hit.get("heading", ""):
         return False

@@ -198,7 +198,8 @@ quote from an adjacent page cannot masquerade as a quote from the centre page.
             remaining -= len(clipped)
             contexts.append({"id": "e" + str(len(contexts) + 1), "source": hit["source"],
                              "file": hit["file"], "heading": heading, "text": clipped,
-                             "retrieved_rank": rank, "truncated": len(clipped) < len(text)})
+                             "retrieved_rank": rank, "truncated": len(clipped) < len(text),
+                             **({'evidence_scope':'pdf_page'} if policy=='passage' and hit['source']=='pdf' else {})})
     return {"contexts": contexts, "get_errors": errors, "policy": policy,
             "characters": max_chars - remaining, "context_sha256": digest(contexts)}
 

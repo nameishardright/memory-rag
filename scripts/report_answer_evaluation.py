@@ -87,6 +87,9 @@ def main():
                               'strict_answer_contract':data['answer_summary'],
                               'semantic_review':review_summary(data,review),
                               'corpus_sha256':data['corpus_sha256'],
+                              'posthoc_scoring_correction':data.get('posthoc_scoring_correction'),
+                              'raw_retrieval_summary':data.get('raw_retrieval_summary'),
+                              'raw_answer_summary':data.get('raw_answer_summary'),
                               'model_ids':sorted({model for rows in data['answers'].values() for r in rows
                                                    for model in r.get('model_usage',{})})}
         report['sha256'][name]=sha(path)
