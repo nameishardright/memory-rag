@@ -33,7 +33,7 @@ flowchart LR
 
 **Honest degradation.** If vector dependencies aren't installed, hybrid/vec modes automatically fall back to BM25 — and the result explicitly *says so* in a `note` field, so a fallback result is never mistaken for a fusion result.
 
-**Security at ingestion.** The agent-memory corpus may contain `password:`/`token:`/`api_key:` lines. A redaction pass keeps the *keys* searchable ("where do I keep the X credential?") while replacing every *value* with `<REDACTED>` before anything enters an index or leaves through a tool.
+**Credential redaction.** All sources and paragraph reads redact detected credential values, including labelled fields, quoted JSON values, inline login pairs, authenticated URLs and authorization headers. Keys remain searchable. These format-based checks cover tested leak patterns; they cannot identify every unlabelled secret. The answer-evaluation adapter also checks inputs and sanitizes model-output records.
 
 **Retrieval findings from a 3-step query-language experiment.** Query in the corpus's language (English queries lost both the lexical leg and the zh-tuned dense leg); rare domain terms beat frequent entity words (which match everything and discriminate nothing); and when you already know the file, `get` beats search.
 
@@ -79,6 +79,8 @@ The evaluator distinguishes actual returned-item ranks, historical deduplicated-
 Use `mine-transcripts --unranked` for held-out candidates: the original miner retrieves candidates before filtering by difficulty. `scripts/sealed_eval.py` freezes source-reviewed labels and consumes the first evaluation exactly once, including failed attempts. This enforces result holdout, not independent human authorship. Quality ablations and uncached latency checks are separate; see [the evaluation guide](docs/retrieval-evaluation.zh.md).
 
 Commands, label format, split discipline and real MCP verification: [`docs/retrieval-evaluation.zh.md`](docs/retrieval-evaluation.zh.md). Existing MCP sessions need to reconnect to load code and schema changes.
+
+The expanded answer evaluation compares the same search results as previews versus full passages, with separately reported required facts, quote provenance, refusal behaviour and source-based semantic review. New questions are grouped by event before splitting; private labels and raw answers remain excluded from commits. See [the answer evaluation guide](docs/answer-evaluation.zh.md). Markdown hits now include a content fingerprint for unambiguous, version-checked `memory_get`; PDF-only vector search builds only the PDF part of its index.
 
 The 2026-09-18 follow-up makes corpus contamination a failing preflight in `eval` (also available as `audit-corpus`), supports unique heading prefixes with candidate suggestions, and records Git delivery state in the versioned report generator. Reports require a committed, clean worktree. Performance observations and remaining experiments are tracked separately in [`docs/next-experiments.zh.md`](docs/next-experiments.zh.md).
 

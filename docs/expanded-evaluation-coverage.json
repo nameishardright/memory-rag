@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "date": "2026-09-18",
+  "original_questions": 59,
+  "previous_consumed_holdout_as_regression": 3,
+  "new_questions": 36,
+  "primary_questions_total": 98,
+  "new_event_groups": 24,
+  "development": {
+    "questions": 18,
+    "groups": 12,
+    "positive": 12,
+    "negative": 6
+  },
+  "result_holdout": {
+    "questions": 18,
+    "groups": 12,
+    "positive": 12,
+    "negative": 6,
+    "consumed": true,
+    "new_model_trials": 1
+  },
+  "original_positive_passage_label_coverage": {
+    "notes": [
+      23,
+      23
+    ],
+    "pdf": [
+      12,
+      12
+    ],
+    "stock": [
+      12,
+      12
+    ]
+  },
+  "stock_original_draft": true,
+  "authorship": "same agent source-first construction; not independent human audit",
+  "dataset_sha256": {
+    "expanded-development.json": "a2a85c05e9ddbff79de53817d5270f516f5fd7d2fcbcff8ceb433948a3081054",
+    "expanded-blind.json": "d799286945a23fff2ebb16864a01efd24404809df6dc66f17cecb1b5003f5e78",
+    "pdf-evidence.json": "e52fa9ddc97d5d51c159069db833e62dd55e5115224ddd92bee9c96cb97a414a",
+    "stock-evidence.json": "9d93c49d516cdbb9406e00b8f7b0dd2b655584a1af6bffc2c5741cc63f8aaf9c"
+  },
+  "raw_blind_result_sha256": "24261f91b52f2b2d6556d82a92e1178884ecb5fb13337604552f1f577dabeed6",
+  "corrected_blind_result_sha256": "6d0d8b31cb61e7dc366a96c0da74f8b7f3ee106b41418ae62094772473c60bd2",
+  "model_inputs_and_outputs_unchanged_by_scoring_correction": true,
+  "private_data_location": "golden/private/ (ignored; private source material not committed)"
+}
