@@ -36,6 +36,7 @@
     {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 2b 实测", "purpose": "evaluation", "reason": "Tokenizer/fusion ablation report and query-level error analysis."},
     {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 1 实测", "purpose": "evaluation", "reason": "Golden-answer curation and historical scores, not the referenced implementation procedure."},
     {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 3 实测", "purpose": "evaluation", "reason": "Inline-versus-retrieval evaluation report."},
-    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 6 实测", "purpose": "evaluation", "reason": "Hot-reload/PDF experiment results and corpus-size snapshots."}
+    {"source": "book", "file": "第5-6周-毕业项目2.0-记忆RAG.md", "heading_prefix": "实验 6 实测", "purpose": "evaluation", "reason": "Hot-reload/PDF experiment results and corpus-size snapshots."},
+    {"source": "work", "file": "dev-connect/supplier-health-agent-sdk/README.md", "heading_prefix": "问观澜:左下角聊天窗(`agent.js` + `public/agent.js`,2026-09-07 加,**本地验过,47021 未上**) (10)", "purpose": "evaluation", "reason": "Corpus audit 2026-09-24: this part quotes the literal negative query that golden_negative.json was built from (kb.js gate lesson). Sub-chunk only; re-audit if the README changes."}
   ]
 }

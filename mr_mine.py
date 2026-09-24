@@ -26,7 +26,18 @@ SOURCES = [   # 路径统一换成 / 再匹配,免得跟 Windows 路径的 JSON 
     (re.compile(r"C--Users-zihao/memory/([^/\"'\s]+\.md)"), "mem"),
     (re.compile(r"rh学习记忆/([^/\"'\s]+\.md)"), "case"),
     (re.compile(r"Agent学习计划/notes/([^/\"'\s]+\.md)"), "book"),
+    (re.compile(r"Desktop/海马云/((?:[^/\"'\s]+/)*[^/\"'\s]+\.md)"), "work"),   # 相对路径;只收入库清单里的
 ]
+_WORK_IDS = None
+
+
+def _in_corpus(src, fn):
+    global _WORK_IDS
+    if src != "work":
+        return True
+    if _WORK_IDS is None:
+        _WORK_IDS = {fid for s in mr_corpus.SOURCES if s["key"] == "work" for fid, _ in mr_corpus.source_files(s)}
+    return fn in _WORK_IDS
 DENY = {"MEMORY.md", "MEMORY-backup-20260907.md", "*.md"}
 # 因为「规矩要求每轮读」而被读的文件,不是因为它回答了问题
 PROCEDURAL = {"cc-teach-agent-principles.md", "weekly-report.md", "claude-md-rules-details.md",
@@ -99,7 +110,7 @@ def scan(days=0):
                             continue
                         for rx, src in SOURCES:
                             for fn in rx.findall(blob):
-                                if fn in DENY or (src, fn) in cur["files"]:
+                                if fn in DENY or (src, fn) in cur["files"] or not _in_corpus(src, fn):
                                     continue
                                 cur["files"].append((src, fn))
                                 stats["direct_reads"] += 1

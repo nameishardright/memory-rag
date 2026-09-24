@@ -22,9 +22,75 @@ SOURCES = [
     # 目录不存在就静默跳过;私有数据,永不进公开仓(只有路径在代码里)。决策时 memory_search(source="stock") 回放同类旧账。
     {"key": "stock", "name": "股票判断案例库",
      "dir": os.environ.get("MR_STOCK_DIR") or os.path.join(HOME, r"Desktop\股票分析\cases\md"), "redact": True},
+    # 第六源(2026-09-24):海马云工作笔记,唯一递归的源——file 是相对路径(方案/xxx.md),子目录里同名 README 很多。
+    # 私有数据,永不进公开仓。默认检索要不要带上它由 MR_WORK_DEFAULT 决定,见 DEFAULT_SOURCES。
+    {"key": "work", "name": "海马云工作笔记",
+     "dir": os.environ.get("MR_WORK_DIR") or os.path.join(HOME, r"Desktop\海马云"), "redact": True, "recursive": True},
 ]
 DENY = {"MEMORY.md"}          # 纯索引,内容都在单文件里,入库只会造重复命中
 NOTE_SOURCES = frozenset({"case", "book", "mem"})
+# work 源递归时剪掉的目录:依赖/构建产物/本仓自己(本仓 docs 引用金标问句,入库会触发污染审计)
+WORK_SKIP_DIRS = frozenset({"node_modules", ".git", ".venv", "venv", "site-packages", ".pytest_cache", "__pycache__",
+                            "dist", "build", ".cache", "memory_rag", "openapi-metrics-preview"})
+# 凭据台账整份不入库(keys-台账.md / <vendor>_keys.md):正则脱敏兜不住表格里的裸 key
+RE_SECRET_FILE = re.compile(r"(?i)(^|[-_])keys?([-_.]|$)")
+
+
+def work_default():
+    return os.environ.get("MR_WORK_DEFAULT", "").strip().lower() in ("1", "true", "on", "yes")
+
+
+# source=None 时查哪些源;work 是否并入默认检索按金标对照定(开关两态都跑)
+DEFAULT_SOURCES = NOTE_SOURCES | ({"work"} if work_default() else frozenset())
+PARAGRAPH_SOURCES = NOTE_SOURCES | {"work"}
+
+
+def _scan(src):
+    """[(file_id, path, stat)],按 file_id 排序。平铺源 file_id=文件名;递归源 file_id=相对路径(/ 分隔),
+    剪 WORK_SKIP_DIRS、跳凭据台账。用 scandir 的 DirEntry.stat():Windows 上 mtime/size 随目录枚举一起回来,
+    不再逐文件发系统调用——指纹每 RELOAD_SEC 在查询路径上算一次,2000 个文件逐个 os.stat 要 300~450ms(2026-09-24 实测)。"""
+    d = src["dir"]
+    if not os.path.isdir(d):
+        return []
+    out, stack = [], [d]
+    while stack:
+        root = stack.pop()
+        try:
+            with os.scandir(root) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if src.get("recursive") and e.name not in WORK_SKIP_DIRS:
+                        stack.append(e.path)
+                elif (e.name.endswith(".md") and e.name not in DENY
+                      and not (src.get("recursive") and RE_SECRET_FILE.search(e.name))):
+                    out.append((os.path.relpath(e.path, d).replace(os.sep, "/"), e.path, e.stat()))
+            except OSError:
+                pass
+    return sorted(out, key=lambda x: x[0])
+
+
+def source_files(src):
+    """[(file_id, path)],按 file_id 排序;规则见 _scan。"""
+    return [(fid, path) for fid, path, _st in _scan(src)]
+
+
+def resolve_file(src, file):
+    """memory_get 的文件定位。平铺源取 basename(防目录穿越);递归源只认清单里的 file_id,
+    也接受唯一的裸文件名。返回 (file_id, path) 或 None。"""
+    if not src.get("recursive"):
+        fn = os.path.basename(file)
+        p = os.path.join(src["dir"], fn)
+        return (fn, p) if os.path.isfile(p) else None
+    files = dict(source_files(src))
+    fid = file.replace("\\", "/")
+    if fid in files:
+        return fid, files[fid]
+    same = [k for k in files if k.rsplit("/", 1)[-1] == fid]
+    return (same[0], files[same[0]]) if len(same) == 1 else None
 PURPOSES = frozenset({"knowledge", "evaluation"})
 CORPUS_POLICY = os.environ.get("MR_CORPUS_POLICY") or os.path.join(BASE, "corpus-policy.json")
 
@@ -44,8 +110,12 @@ def load_purposes():
             if not isinstance(entry["heading_prefix"], str) or not entry["heading_prefix"].strip():
                 raise ValueError("corpus-policy.json: empty section prefix")
             key += (entry["heading_prefix"],)
+        # 平铺源只收裸文件名;递归源(work)收 / 分隔的相对路径,不许 .. / 反斜杠 / 绝对路径
+        recursive = any(s["key"] == key[0] and s.get("recursive") for s in SOURCES)
+        valid_id = (os.path.basename(key[1]) == key[1] or
+                    (recursive and "\\" not in key[1] and not key[1].startswith("/") and ".." not in key[1].split("/")))
         if (key[0] not in ({s["key"] for s in SOURCES} | {"pdf"}) or
-                os.path.basename(key[1]) != key[1] or entry["purpose"] not in PURPOSES or key in result):
+                not valid_id or entry["purpose"] not in PURPOSES or key in result):
             raise ValueError("corpus-policy.json: invalid or duplicate document label")
         result[key] = entry["purpose"]
     return result
@@ -169,16 +239,8 @@ def signature():
         st = os.stat(CORPUS_POLICY)
         parts.append("policy|%s|%d|%d" % (CORPUS_POLICY, st.st_mtime_ns, st.st_size))
     for src in SOURCES:
-        d = src["dir"]
-        if not os.path.isdir(d):
-            continue
-        for fn in sorted(os.listdir(d)):
-            if fn.endswith(".md") and fn not in DENY:
-                try:
-                    st = os.stat(os.path.join(d, fn))
-                    parts.append("%s|%s|%d|%d" % (src["key"], fn, st.st_mtime_ns, st.st_size))
-                except OSError:
-                    pass
+        for fn, _path, st in _scan(src):
+            parts.append("%s|%s|%d|%d" % (src["key"], fn, st.st_mtime_ns, st.st_size))
     if pdf_enabled():
         for p in pdf_files():
             st = os.stat(p)
@@ -202,9 +264,12 @@ RE_QUOTED_CRED = re.compile(r"(?i)(password|passwd|pwd|secret|token|api[_-]?key|
 RE_INLINE_LOGIN = re.compile(r"`([A-Za-z0-9_.@-]{1,64}):([^`\s:<>]{6,})`")
 RE_URL_LOGIN = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)([^\s/@]+)(@)")
 RE_AUTH_HEADER = re.compile(r"(?i)(\b(?:Authorization|Proxy-Authorization)[\"']?\s*[:=]\s*[\"']?(?:Basic|Bearer)\s+)([^\s\"'`,;}]+)")
+# 裸 key(表格/清单里没有 key= 前缀):sk- 供应商 key、腾讯云 AKID / AWS AKIA / 阿里 LTAI;2026-09-24 work 源扫出 7 个漏网
+RE_BARE_KEY = re.compile(r"\b(sk-|AKID|AKIA|LTAI)[A-Za-z0-9_-]{12,}")
 
 
 def redact(text):
+    text = RE_BARE_KEY.sub(lambda m: m[1] + '<REDACTED>', text)
     text = RE_URL_LOGIN.sub(lambda m: m[1] + '<REDACTED>' + m[3], text)
     text = RE_AUTH_HEADER.sub(lambda m: m[1] + '<REDACTED>', text)
     def inline(match):
@@ -253,7 +318,7 @@ def _split_heading(text):
 def chunk_strategy(source):
     # Stock and PDF retain their established chunk boundaries. Ordinary-note
     # chunking is measured independently; changing their IDF still needs a stock check.
-    return CHUNK_STRATEGY if source in NOTE_SOURCES else "character"
+    return CHUNK_STRATEGY if source in PARAGRAPH_SOURCES else "character"
 
 
 def _paragraph_spans(body):
@@ -319,11 +384,15 @@ def load_chunks():
         if not os.path.isdir(d):
             print("[corpus] 缺目录: %s" % d, file=sys.stderr)
             continue
-        for fn in sorted(os.listdir(d)):
-            if not fn.endswith(".md") or fn in DENY:
-                continue
+        files = _scan(src)
+        seen = None
+        if src.get("recursive"):
+            # 工作目录里同一仓拷了 9 份(supplier-health*):同一段落只留最新文件那份,否则前 5 名全是复本
+            files.sort(key=lambda f: -f[2].st_mtime_ns)
+            seen = set()
+        for fn, path, _st in files:
             try:
-                with open(os.path.join(d, fn), encoding="utf-8", errors="replace") as f:
+                with open(path, encoding="utf-8", errors="replace") as f:
                     text = f.read()
             except OSError as e:
                 print("[corpus] 读失败 %s: %s" % (fn, e), file=sys.stderr)
@@ -334,6 +403,11 @@ def load_chunks():
             for head, body in (hb for h in _split_heading(text)
                                for hb in _hard_wrap(*h, strategy=chunk_strategy(src["key"]))):
                 body = redact(body)
+                if seen is not None:
+                    dup = hashlib.md5(("%s\n%s" % (head, body)).encode()).hexdigest()
+                    if dup in seen:
+                        continue
+                    seen.add(dup)
                 chunks.append({
                     "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
                     "source": src["key"], "file": fn, "heading": head, "text": body,

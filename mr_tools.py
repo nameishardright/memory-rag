@@ -118,12 +118,14 @@ def _rebuild(reason):
     _STATE["corpus_sha256"] = hashlib.sha256(json.dumps(
         [(c["source"], c["md5"], c.get("purpose", "knowledge")) for c in chunks],
         ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
-    notes_idx = [i for i, c in enumerate(chunks) if c["source"] in mr_corpus.NOTE_SOURCES]
+    notes_idx = [i for i, c in enumerate(chunks) if c["source"] in mr_corpus.DEFAULT_SOURCES]
     ordinary_idx = [i for i in notes_idx if chunks[i].get("purpose") != "evaluation"]
     nonpdf_idx = [i for i, c in enumerate(chunks) if c["source"] != "pdf"]
     pdf_idx = [i for i, c in enumerate(chunks) if c["source"] == "pdf"]
-    _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx}
-    _STATE["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认三源,统计不含 stock/评测复盘
+    work_idx = [i for i, c in enumerate(chunks) if c["source"] == "work"]
+    _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx, "work": work_idx}
+    _STATE["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认源,统计不含 stock/评测复盘
+    _STATE["bm25_work"] = _SubBM25(chunks, work_idx) if work_idx else None   # source=work 单查:工作笔记自己的 IDF
     pdf_knowledge = [i for i in pdf_idx if chunks[i].get("purpose") != "evaluation"]
     _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_knowledge) if pdf_idx else None
     for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation", "bm25_pdf_evaluation"):
@@ -222,7 +224,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     elif include_pdf:
         allowed = mr_corpus.NOTE_SOURCES | {"pdf"}
     else:
-        allowed = {"case", "book", "mem"}
+        allowed = set(mr_corpus.DEFAULT_SOURCES)
     stock_scope = (mr_stock.query_filter(query, {c["file"] for c in chunks if c["source"] == "stock"}, stock_filter)
                    if source == "stock" else {})
     keep = lambda i: ((allowed is None or chunks[i]["source"] in allowed) and   # noqa: E731
@@ -240,7 +242,9 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
             if "bm25_pdf_evaluation" not in st:
                 st["bm25_pdf_evaluation"] = _SubBM25(chunks, st["idx"]["pdf"])
             bm_index = st["bm25_pdf_evaluation"]
-    elif allowed <= mr_corpus.NOTE_SOURCES:
+    elif allowed == {"work"} and "work" not in mr_corpus.DEFAULT_SOURCES:
+        bm_index = st.get("bm25_work")
+    elif allowed <= mr_corpus.DEFAULT_SOURCES:
         bm_index = st["bm25"]
         if include_evaluation:
             if "bm25_evaluation" not in st:
@@ -293,7 +297,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
     want_rr = (rerank if rerank is not None else bool(os.environ.get("MR_RERANK")))
     if want_rr and ranked:
         rk = _get_reranker(rerank if isinstance(rerank, str) else None,
-                           legacy=not allowed <= mr_corpus.NOTE_SOURCES)
+                           legacy=not allowed <= mr_corpus.PARAGRAPH_SOURCES)
         if rk is None:
             note = (note + ";" if note else "") + "重排未配置(MR_RERANK 或 rerank=<预设>)"
         elif not rk.available:
@@ -458,20 +462,23 @@ def _memory_get(file, source=None, heading=None, chunk_md5=None):
                                          purposes.get(("pdf", m.group(1)), "knowledge"), purposes)
         return {"ok": True, "source": "pdf", "file": m.group(1), "page": p, "pages": [lo, hi], "text": text, "purpose": purpose}
     for src in mr_corpus.SOURCES:
-        p = os.path.join(src["dir"], os.path.basename(file))   # basename 防目录穿越
-        if os.path.isfile(p) and (not source or src["key"] == source):
+        if source and src["key"] != source:
+            continue
+        found = mr_corpus.resolve_file(src, file)   # 平铺源取 basename 防目录穿越;递归源只认清单内的相对路径
+        if found:
+            fid, p = found
             with open(p, encoding="utf-8", errors="replace") as f:
                 text = f.read()
             text = mr_corpus.redact(text)
             purposes = mr_corpus.load_purposes()
-            purpose = mr_corpus.document_purpose(src["key"], os.path.basename(file), text, purposes)
+            purpose = mr_corpus.document_purpose(src["key"], fid, text, purposes)
             if heading is not None or chunk_md5 is not None:
                 blocks = [(head, mr_corpus.redact(body)) for h in mr_corpus._split_heading(text)
                           for head, body in mr_corpus._hard_wrap(*h, strategy=mr_corpus.chunk_strategy(src["key"]))]
                 requested = heading.strip() if heading is not None else None
                 if chunk_md5 is not None:
                     matches = list(dict.fromkeys(block for block in blocks
-                        if mr_corpus.chunk_key(os.path.basename(file), *block) == chunk_md5))
+                        if mr_corpus.chunk_key(fid, *block) == chunk_md5))
                     if len(matches) != 1:
                         return {"ok": False, "error": "段落内容已变化或指纹不存在；请重新 memory_search 后再读取",
                                 "stale_reference": True}
@@ -486,13 +493,13 @@ def _memory_get(file, source=None, heading=None, chunk_md5=None):
                     return {"ok": False, "error": "段落标题不存在或不唯一；请使用候选完整标题，或省略 heading 读取全文",
                             "candidates": candidates[:10], "candidate_count": len(candidates)}
                 heading, text = matches[0]
-                purpose = mr_corpus.chunk_purpose(src["key"], os.path.basename(file), heading, purpose, purposes)
-            result = {"ok": True, "source": src["key"], "file": os.path.basename(file), "text": text, "purpose": purpose}
+                purpose = mr_corpus.chunk_purpose(src["key"], fid, heading, purpose, purposes)
+            result = {"ok": True, "source": src["key"], "file": fid, "text": text, "purpose": purpose}
             if src["key"] == "stock" and mr_stock.card_identity(result["file"]):
                 result["stock"] = dict(mr_stock.card_identity(result["file"]))
             if heading is not None:
                 result["heading"] = heading
-                result["chunk_md5"] = mr_corpus.chunk_key(os.path.basename(file), heading, text)
+                result["chunk_md5"] = mr_corpus.chunk_key(fid, heading, text)
             return result
     return {"ok": False, "error": "语料目录都没有 %s(把 memory_search 结果里的 file 字段原样传)" % file}
 
@@ -509,7 +516,7 @@ def memory_check_answer(question, answer, evidence):
         if (not isinstance(reference, dict)
                 or set(reference) - {"id", "source", "file", "heading", "chunk_md5"}
                 or not all(isinstance(reference.get(k), str) and reference[k] for k in ("id", "source", "file"))
-                or reference["source"] not in mr_corpus.NOTE_SOURCES | {"pdf", "stock"}):
+                or reference["source"] not in mr_corpus.PARAGRAPH_SOURCES | {"pdf", "stock"}):
             raise ValueError("Evidence needs id/source/file and optional heading/chunk_md5; never supply text")
         fetched = _memory_get(**{k: v for k, v in reference.items() if k != "id"})
         if not fetched.get("ok") or fetched.get("source") != reference["source"]:
@@ -534,7 +541,8 @@ REGISTRY = {
         "fn": memory_search,
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
-                "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
+                "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf;"
+                "海马云工作笔记(方案/报告/接入/jira-drafts/观澜 kb 等,file 是相对路径)用 source=work。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
                 "股票单标的+单日期/周期问题自动按卡片字段匹配；比较多日期/周期时保持宽搜，可用 stock_filter 明确范围。stock.card_date 是卡片日期，不保证正文每个价格都发生在该日。"
                 "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"
                 "low 表示证据不足,别硬凑。hybrid 每条带 legs(词法/语义名次);优先返回同文件正文,仅有索引块时标 evidence_kind=navigation。"
@@ -549,7 +557,7 @@ REGISTRY = {
             "mode": {"type": "string", "enum": ["bm25", "vec", "hybrid"],
                      "description": "默认 hybrid;向量层没装会自动回退 bm25 并在 note 里说明"},
             "topk": {"type": "integer", "minimum": 1, "maximum": 10, "description": "返回条数,默认 5,上限 10"},
-            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"], "description": "可选,只查某一源。默认只查 case/book/mem;股票历史判断用 stock;教材原文用 pdf(heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
+            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock", "work"], "description": "可选,只查某一源。默认只查 case/book/mem;股票历史判断用 stock;教材原文用 pdf(heading 是页码,再 memory_get 「xxx.pdf#p81」看整页)"},
             "include_pdf": {"type": "boolean", "description": "默认 false;true 时默认检索也混入 PDF 原文页(会挤掉笔记,一般别开)"},
             "include_evaluation": {"type": "boolean", "description": "默认 false,排除标记为 evaluation 的评测复盘;查评测方法/复盘时设 true。样例问题不等于事实答案"},
             "stock_filter": {"type": "object", "additionalProperties": False, "minProperties": 1,
@@ -571,7 +579,7 @@ REGISTRY = {
         "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;heading 优先精确匹配,唯一前缀也可;歧义时返回候选标题。",
         "schema": {"type": "object", "properties": {
             "file": {"type": "string", "description": "文件名,来自 memory_search 结果的 file 字段;教材原文写成「xxx.pdf#p81」取那一页 ±1"},
-            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
+            "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock", "work"]},
             "heading": {"type": "string", "description": "可选,Markdown 标题优先精确匹配;唯一前缀可省略 (1) 等后缀,歧义或未找到时返回 candidates。省略则取全文;PDF 用 file 的 #p 页码"},
             "chunk_md5": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "可选,原样传入 memory_search 返回的 Markdown 段落指纹。同名标题用它精确定位；内容改变时返回 stale_reference，须重新搜索。PDF 用 #p 页码，不传此项。"},
         }, "required": ["file"]},
@@ -596,7 +604,7 @@ REGISTRY = {
                                                   "properties": {"evidence_id": {"type": "string"}, "quote": {"type": "string"}}}}}}}}},
             "evidence": {"type": "array", "maxItems": 20, "items": {
                 "type": "object", "additionalProperties": False, "required": ["id", "source", "file"],
-                "properties": {"id": {"type": "string"}, "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock"]},
+                "properties": {"id": {"type": "string"}, "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock", "work"]},
                                "file": {"type": "string"}, "heading": {"type": "string"},
                                "chunk_md5": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}}},
         }, "required": ["question", "answer", "evidence"]},
