@@ -252,7 +252,7 @@ class PrivateVector:
         self.ready, self.state = True, 'ready'
         return {'windows': len(rows), 'encoded': encoded, 'reused': reused}
 
-    def search(self, query, topk=50, group_by_document=False):
+    def search(self, query, topk=50, group_by_document=False, document_ids=None):
         if self.cancelled.is_set():
             raise InterruptedError('Session locked')
         if not self.ready or self.emb is None:
@@ -262,6 +262,8 @@ class PrivateVector:
         best = {}
         for row, score in zip(self.rows, scores):
             i = row['chunk']
+            if document_ids is not None and self.chunks[i]['document_id'] not in document_ids:
+                continue
             unit = self.chunks[i]['document_id'] if group_by_document else i
             previous = best.get(unit)
             if previous is None or (-float(score), i) < (-previous[1], previous[0]):

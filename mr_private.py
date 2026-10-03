@@ -584,25 +584,66 @@ class PrivateRAG:
             raise ValueError("Unknown source scope")
         if not query.strip() or not 1 <= topk <= 50:
             raise ValueError("A nonempty query and topk between 1 and 50 are required")
-        from mr_private_routing import route_query
+        from mr_private_routing import route_query, named_source
         route = route_query(query) if scope == 'auto' else {'scope': scope, 'automatic': False, 'reason': 'explicit'}
         scope = route['scope']
         selected_mode = mode or self.mode
         if selected_mode not in {'bm25', 'hybrid'}:
             raise ValueError('Unknown private retrieval mode')
         chunks, index = self._index(scope)
-        bm = index.search(lexical_query or query, topk=max(50, topk), group_by_document=True)
+        reference = named_source(query)
+        referenced_ids = None
+        search_query = query
+        if reference:
+            from pathlib import PurePosixPath
+            import unicodedata
+            def matches_source(value):
+                value = unicodedata.normalize('NFKC', value.replace('\\', '/')).casefold()
+                path = PurePosixPath(value)
+                return reference['name'] in {value, path.name, path.stem}
+            referenced_ids = {doc['id'] for doc in self.documents.values()
+                              if (scope == 'all' or doc['scope'] == scope)
+                              and doc.get('purpose') not in {'evaluation', 'excluded', 'navigation'}
+                              and any(matches_source(source['file']) for source in
+                                      [doc, *doc.get('duplicate_sources', [])])}
+            route = {**route, 'source_reference': 'unique' if len(referenced_ids) == 1 else
+                     'missing' if not referenced_ids else 'ambiguous',
+                     'source_reference_matches': len(referenced_ids)}
+            if len(referenced_ids) != 1:
+                return {'ok': True, 'mode': selected_mode, 'scope': scope, 'route': route,
+                        'hits': [], 'semantic_state': 'not_searched', 'answerability': 'no_evidence',
+                        'note': 'Explicit source is missing or ambiguous in the selected scope.'}
+            search_query = reference['query']
+            from mr_private_facts import expand_query
+            lexical_query = expand_query(search_query)
+        if referenced_ids is not None:
+            # Search the named source before a global top-k cutoff. A relevant
+            # source must not vanish behind unrelated high-scoring files.
+            positions = [i for i, chunk in enumerate(chunks) if chunk['document_id'] in referenced_ids]
+            local = PrivateBM25([chunks[i] for i in positions])
+            bm = [(positions[i], score) for i, score in local.search(
+                lexical_query or search_query, topk=max(50, topk), group_by_document=True)]
+        else:
+            bm = index.search(lexical_query or search_query, topk=max(50, topk), group_by_document=True)
         ranked = [(i, s, [rank, None]) for rank, (i, s) in enumerate(bm)]
+        if referenced_ids is not None and not ranked and positions:
+            ranked = [(positions[0], 0.0, [None, None])]
         actual_mode, vector_scores, literal_matches = 'bm25', {}, set()
         if selected_mode == 'hybrid':
             vector = self._vector(scope, chunks)
             if vector is not None and vector.ready:
                 try:
-                    dense = vector.search(query, topk=max(50, topk), group_by_document=True)
+                    dense = vector.search(search_query, topk=max(50, topk), group_by_document=True,
+                                          **({'document_ids': referenced_ids} if referenced_ids is not None else {}))
                     vector_scores = dict(dense)
                     # Fuse the complete candidate union before truncation. Two
                     # weak votes must not displace an original literal phrase.
                     ranked = rrf_files(chunks, [bm, dense], topk=len(bm) + len(dense))
+                    if referenced_ids is not None and dense:
+                        # File identity is fixed by the user's explicit reference;
+                        # use semantics to pick its answer passage rather than
+                        # voting a different passage into the representative slot.
+                        ranked = [(dense[0][0], ranked[0][1], ranked[0][2])]
                     needle = query.strip().casefold()
                     if len(needle) >= 12:
                         fused = {chunks[i]['document_id']: (score, legs) for i, score, legs in ranked}
@@ -664,8 +705,10 @@ class PrivateRAG:
             context = doc['text']
         else:
             from mr_private_facts import expand_query
+            from mr_private_routing import named_source
+            reference = named_source(query)
             local = PrivateBM25(candidates)
-            ranked = local.search(expand_query(query), topk=max_passages)
+            ranked = local.search(expand_query(reference['query'] if reference else query), topk=max_passages)
             positions = [i for i, _ in ranked] or [0]
             if expected_md5:
                 positions.insert(0, next(i for i, c in enumerate(candidates) if c['md5'] == expected_md5))

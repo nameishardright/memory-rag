@@ -186,3 +186,47 @@ times include loading the encrypted benchmark question and do not flush OS cache
 Startup workers explicitly use the same top-five budget. Startup baseline misses
 are reported as baseline observations; acceptance still requires preserved
 top-five file/evidence coverage and successful fresh-process hybrid retrieval.
+
+## Explicit source names and natural rewording
+
+An explicitly named file narrows retrieval before the global candidate cutoff:
+
+```powershell
+python mr.py private --store C:\private\corpus.enc search "档案《offer-example》里，每年固定能拿多少钱？" --scope personal
+python mr.py private --store C:\private\corpus.enc search 'In the record named "offer-example", how much is the fixed yearly pay?' --scope personal
+```
+
+The reference must exactly identify a file stem, filename, or stored relative path
+within the selected scope. Same-name files require a complete relative path.
+Missing, ambiguous, excluded, or wrong-scope references return no evidence instead
+of neighbouring files. Ordinary book-title quotation alone does not select a file.
+Within an identified file, local semantic retrieval chooses a passage and the
+original evidence is still available; selecting a file does not verify its facts.
+
+`mr_private_benchmark.py` compares BM25 and hybrid using identical encrypted
+questions, original-source hashes, code fingerprints and a top-five budget. It can
+also compare a trusted previous private-feature code checkout in isolated workers.
+The controller consumes a held-out set before any mode searches; failed or
+interrupted runs cannot be renamed into fresh tests. Detailed reports stay encrypted.
+
+```powershell
+python -m pip install -r requirements-private.txt -r requirements-private-semantic.txt
+python scripts/setup_private_semantic.py
+python scripts/verify_private_semantic.py --output .cache/private-semantic.json
+python mr_private_benchmark.py --gui --author --store C:\private\corpus.enc --output-dir C:\private\evaluation\natural-001
+python mr_private_benchmark.py --store C:\private\corpus.enc --labels C:\private\labels.enc --output C:\private\results.enc --summary C:\private\summary.json --baseline-code C:\code\previous-private-feature
+```
+
+The optional authoring helper uses fixed everyday Chinese/English wording and
+verifiable original source fields. It reads no retrieval results, excludes prior
+evaluation documents and curated narratives, keeps related language variants in
+one event group, and freezes the development and held-out labels before searching.
+Those generated questions include source-name context. Their scores do not establish
+unqualified conversational recall, independently collected user-question accuracy,
+calibrated refusal, or final-answer correctness. Existing probe and natural labels
+remain unchanged; earlier observations are rendered separately as known regressions.
+
+The fictional public regression command never unlocks a real corpus and denies
+socket connections during model inference. It also checks evidence at the end of a
+long named source and rejects a nonexistent named source. The optional installed
+source-collector integration tests use `MR_PRIVATE_SOURCE_TOOLS`; otherwise they skip.
