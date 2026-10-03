@@ -46,6 +46,10 @@ For password-unlocked local retrieval over encrypted personal/family journals, u
 pinned local multilingual encoder, encrypted index caches and source evidence.
 Personal data stays outside the checkout; ordinary redaction is unchanged.
 
+For the OneDrive app, see the [agent handoff](docs/AGENT-HANDOFF.md) and
+[measured change log](docs/CHANGELOG-RAG.md). Deployment versions and private
+evaluation locations are documented there.
+
 ```bash
 py -3.12 mr.py stats                     # corpus / tokenizer / vector-layer status
 py -3.12 mr.py search "<query>"          # --mode bm25|vec|hybrid (default hybrid)

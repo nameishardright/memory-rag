@@ -1,5 +1,10 @@
 # Encrypted personal corpus
 
+OneDrive deployment notes and measured changes: [agent handoff](AGENT-HANDOFF.md)
+and [change log](CHANGELOG-RAG.md). The public branch contains generic code and
+aggregate measurements; real private labels and detailed evidence stay encrypted
+outside the checkout.
+
 The private extension reads authenticated `FAMILYMEMORYv1` extraction journals and
 publishes an encrypted local corpus with optional hybrid retrieval. Ordinary search, MCP tools, redaction,
 evaluation labels and golden files retain their existing contracts. Personal
