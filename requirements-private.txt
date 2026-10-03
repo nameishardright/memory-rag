@@ -1,0 +1,2 @@
+cryptography==50.0.2
+jieba==0.42.1

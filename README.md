@@ -41,6 +41,11 @@ flowchart LR
 
 ## Usage
 
+For password-unlocked local retrieval over encrypted personal/family journals, use
+[`mr.py private`](docs/private-corpus.md). The private path supports BM25 plus a
+pinned local multilingual encoder, encrypted index caches and source evidence.
+Personal data stays outside the checkout; ordinary redaction is unchanged.
+
 ```bash
 py -3.12 mr.py stats                     # corpus / tokenizer / vector-layer status
 py -3.12 mr.py search "<query>"          # --mode bm25|vec|hybrid (default hybrid)

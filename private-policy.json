@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "description": "Personal evidence is the default. Projects, stocks and history are separate sources. Exclusions affect retrieval and collection, not original files or existing encrypted archives.",
+  "rules": [
+    {"prefix": "06_代码项目", "scope": "technical", "reason": "old_projects_on_demand"},
+    {"prefix": "90_历史归档", "scope": "history", "purpose": "historical", "reason": "historical_documents_on_demand"}
+  ]
+}

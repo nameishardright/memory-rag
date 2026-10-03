@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "boundary": "New fictional event groups; no private sources or natural private accuracy claim.",
+  "documents": [
+    {
+      "id": "ranking-holdout-washer",
+      "file": "ranking-holdout-washer.txt",
+      "scope": "personal",
+      "text": "# Appliance warranty\nWashing machine warranty valid until 2032-04-18. Receipt reference WSH-6418."
+    },
+    {
+      "id": "ranking-holdout-water",
+      "file": "ranking-holdout-water.txt",
+      "scope": "personal",
+      "text": "# Water utility invoice\nWater bill payment due 2031-09-23. Amount due CAD 74.80. Invoice WATER-8724."
+    },
+    {
+      "id": "ranking-holdout-volunteer",
+      "file": "ranking-holdout-volunteer.txt",
+      "scope": "personal",
+      "text": "# Volunteer confirmation\nCommunity volunteer service: 37 hours completed. Coordinator: Morgan Fiction. Event reference VOL-9321."
+    },
+    {
+      "id": "ranking-holdout-pet",
+      "file": "ranking-holdout-pet.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination record\nPet name: Orbit. Rabies vaccination next due 2033-05-17. Veterinary reference VET-5371."
+    },
+    {
+      "id": "ranking-holdout-fitness",
+      "file": "ranking-holdout-fitness.txt",
+      "scope": "personal",
+      "text": "# Gym membership receipt\nFitness membership renewal charge CAD 48.25 on 2031-11-06. Member reference GYM-6802."
+    },
+    {
+      "id": "ranking-holdout-car",
+      "file": "ranking-holdout-car.txt",
+      "scope": "personal",
+      "text": "# Vehicle permit\nVehicle registration expires 2032-08-29. Plate: TEST-5836. Permit reference CAR-2958."
+    },
+    {
+      "id": "ranking-holdout-distractor-0",
+      "file": "ranking-holdout-distractor-0.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7000."
+    },
+    {
+      "id": "ranking-holdout-distractor-1",
+      "file": "ranking-holdout-distractor-1.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7001."
+    },
+    {
+      "id": "ranking-holdout-distractor-2",
+      "file": "ranking-holdout-distractor-2.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7002."
+    },
+    {
+      "id": "ranking-holdout-distractor-3",
+      "file": "ranking-holdout-distractor-3.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7003."
+    },
+    {
+      "id": "ranking-holdout-distractor-4",
+      "file": "ranking-holdout-distractor-4.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7004."
+    },
+    {
+      "id": "ranking-holdout-distractor-5",
+      "file": "ranking-holdout-distractor-5.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7005."
+    },
+    {
+      "id": "ranking-holdout-distractor-6",
+      "file": "ranking-holdout-distractor-6.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7006."
+    },
+    {
+      "id": "ranking-holdout-distractor-7",
+      "file": "ranking-holdout-distractor-7.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7007."
+    },
+    {
+      "id": "ranking-holdout-distractor-8",
+      "file": "ranking-holdout-distractor-8.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7008."
+    },
+    {
+      "id": "ranking-holdout-distractor-9",
+      "file": "ranking-holdout-distractor-9.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7009."
+    },
+    {
+      "id": "ranking-holdout-distractor-10",
+      "file": "ranking-holdout-distractor-10.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7010."
+    },
+    {
+      "id": "ranking-holdout-distractor-11",
+      "file": "ranking-holdout-distractor-11.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7011."
+    },
+    {
+      "id": "ranking-holdout-distractor-12",
+      "file": "ranking-holdout-distractor-12.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7012."
+    },
+    {
+      "id": "ranking-holdout-distractor-13",
+      "file": "ranking-holdout-distractor-13.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7013."
+    },
+    {
+      "id": "ranking-holdout-distractor-14",
+      "file": "ranking-holdout-distractor-14.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7014."
+    },
+    {
+      "id": "ranking-holdout-distractor-15",
+      "file": "ranking-holdout-distractor-15.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7015."
+    },
+    {
+      "id": "ranking-holdout-distractor-16",
+      "file": "ranking-holdout-distractor-16.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7016."
+    },
+    {
+      "id": "ranking-holdout-distractor-17",
+      "file": "ranking-holdout-distractor-17.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7017."
+    },
+    {
+      "id": "ranking-holdout-distractor-18",
+      "file": "ranking-holdout-distractor-18.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7018."
+    },
+    {
+      "id": "ranking-holdout-distractor-19",
+      "file": "ranking-holdout-distractor-19.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7019."
+    },
+    {
+      "id": "ranking-holdout-distractor-20",
+      "file": "ranking-holdout-distractor-20.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7020."
+    },
+    {
+      "id": "ranking-holdout-distractor-21",
+      "file": "ranking-holdout-distractor-21.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7021."
+    },
+    {
+      "id": "ranking-holdout-distractor-22",
+      "file": "ranking-holdout-distractor-22.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7022."
+    },
+    {
+      "id": "ranking-holdout-distractor-23",
+      "file": "ranking-holdout-distractor-23.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7023."
+    },
+    {
+      "id": "ranking-holdout-distractor-24",
+      "file": "ranking-holdout-distractor-24.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7024."
+    },
+    {
+      "id": "ranking-holdout-distractor-25",
+      "file": "ranking-holdout-distractor-25.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7025."
+    },
+    {
+      "id": "ranking-holdout-distractor-26",
+      "file": "ranking-holdout-distractor-26.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7026."
+    },
+    {
+      "id": "ranking-holdout-distractor-27",
+      "file": "ranking-holdout-distractor-27.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7027."
+    },
+    {
+      "id": "ranking-holdout-distractor-28",
+      "file": "ranking-holdout-distractor-28.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7028."
+    },
+    {
+      "id": "ranking-holdout-distractor-29",
+      "file": "ranking-holdout-distractor-29.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7029."
+    },
+    {
+      "id": "ranking-holdout-distractor-30",
+      "file": "ranking-holdout-distractor-30.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7030."
+    },
+    {
+      "id": "ranking-holdout-distractor-31",
+      "file": "ranking-holdout-distractor-31.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7031."
+    },
+    {
+      "id": "ranking-holdout-distractor-32",
+      "file": "ranking-holdout-distractor-32.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7032."
+    },
+    {
+      "id": "ranking-holdout-distractor-33",
+      "file": "ranking-holdout-distractor-33.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7033."
+    },
+    {
+      "id": "ranking-holdout-distractor-34",
+      "file": "ranking-holdout-distractor-34.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7034."
+    },
+    {
+      "id": "ranking-holdout-distractor-35",
+      "file": "ranking-holdout-distractor-35.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7035."
+    },
+    {
+      "id": "ranking-holdout-distractor-36",
+      "file": "ranking-holdout-distractor-36.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7036."
+    },
+    {
+      "id": "ranking-holdout-distractor-37",
+      "file": "ranking-holdout-distractor-37.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7037."
+    },
+    {
+      "id": "ranking-holdout-distractor-38",
+      "file": "ranking-holdout-distractor-38.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7038."
+    },
+    {
+      "id": "ranking-holdout-distractor-39",
+      "file": "ranking-holdout-distractor-39.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7039."
+    },
+    {
+      "id": "ranking-holdout-distractor-40",
+      "file": "ranking-holdout-distractor-40.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7040."
+    },
+    {
+      "id": "ranking-holdout-distractor-41",
+      "file": "ranking-holdout-distractor-41.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7041."
+    },
+    {
+      "id": "ranking-holdout-distractor-42",
+      "file": "ranking-holdout-distractor-42.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7042."
+    },
+    {
+      "id": "ranking-holdout-distractor-43",
+      "file": "ranking-holdout-distractor-43.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7043."
+    },
+    {
+      "id": "ranking-holdout-distractor-44",
+      "file": "ranking-holdout-distractor-44.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7044."
+    },
+    {
+      "id": "ranking-holdout-distractor-45",
+      "file": "ranking-holdout-distractor-45.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7045."
+    },
+    {
+      "id": "ranking-holdout-distractor-46",
+      "file": "ranking-holdout-distractor-46.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7046."
+    },
+    {
+      "id": "ranking-holdout-distractor-47",
+      "file": "ranking-holdout-distractor-47.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7047."
+    },
+    {
+      "id": "ranking-holdout-distractor-48",
+      "file": "ranking-holdout-distractor-48.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7048."
+    },
+    {
+      "id": "ranking-holdout-distractor-49",
+      "file": "ranking-holdout-distractor-49.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7049."
+    },
+    {
+      "id": "ranking-holdout-distractor-50",
+      "file": "ranking-holdout-distractor-50.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7050."
+    },
+    {
+      "id": "ranking-holdout-distractor-51",
+      "file": "ranking-holdout-distractor-51.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7051."
+    },
+    {
+      "id": "ranking-holdout-distractor-52",
+      "file": "ranking-holdout-distractor-52.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7052."
+    },
+    {
+      "id": "ranking-holdout-distractor-53",
+      "file": "ranking-holdout-distractor-53.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7053."
+    },
+    {
+      "id": "ranking-holdout-distractor-54",
+      "file": "ranking-holdout-distractor-54.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7054."
+    },
+    {
+      "id": "ranking-holdout-distractor-55",
+      "file": "ranking-holdout-distractor-55.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7055."
+    },
+    {
+      "id": "ranking-holdout-distractor-56",
+      "file": "ranking-holdout-distractor-56.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7056."
+    },
+    {
+      "id": "ranking-holdout-distractor-57",
+      "file": "ranking-holdout-distractor-57.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7057."
+    },
+    {
+      "id": "ranking-holdout-distractor-58",
+      "file": "ranking-holdout-distractor-58.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7058."
+    },
+    {
+      "id": "ranking-holdout-distractor-59",
+      "file": "ranking-holdout-distractor-59.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7059."
+    },
+    {
+      "id": "ranking-holdout-distractor-60",
+      "file": "ranking-holdout-distractor-60.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7060."
+    },
+    {
+      "id": "ranking-holdout-distractor-61",
+      "file": "ranking-holdout-distractor-61.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7061."
+    },
+    {
+      "id": "ranking-holdout-distractor-62",
+      "file": "ranking-holdout-distractor-62.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7062."
+    },
+    {
+      "id": "ranking-holdout-distractor-63",
+      "file": "ranking-holdout-distractor-63.txt",
+      "scope": "personal",
+      "text": "# Appliance service overview\nThis is a fictional informational brochure. Appliance service requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7063."
+    },
+    {
+      "id": "ranking-holdout-distractor-64",
+      "file": "ranking-holdout-distractor-64.txt",
+      "scope": "personal",
+      "text": "# Water utility overview\nThis is a fictional informational brochure. Water utility requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7064."
+    },
+    {
+      "id": "ranking-holdout-distractor-65",
+      "file": "ranking-holdout-distractor-65.txt",
+      "scope": "personal",
+      "text": "# Community volunteer overview\nThis is a fictional informational brochure. Community volunteer requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7065."
+    },
+    {
+      "id": "ranking-holdout-distractor-66",
+      "file": "ranking-holdout-distractor-66.txt",
+      "scope": "personal",
+      "text": "# Veterinary vaccination overview\nThis is a fictional informational brochure. Veterinary vaccination requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7066."
+    },
+    {
+      "id": "ranking-holdout-distractor-67",
+      "file": "ranking-holdout-distractor-67.txt",
+      "scope": "personal",
+      "text": "# Fitness membership overview\nThis is a fictional informational brochure. Fitness membership requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7067."
+    },
+    {
+      "id": "ranking-holdout-distractor-68",
+      "file": "ranking-holdout-distractor-68.txt",
+      "scope": "personal",
+      "text": "# Vehicle registration overview\nThis is a fictional informational brochure. Vehicle registration requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7068."
+    },
+    {
+      "id": "ranking-holdout-distractor-69",
+      "file": "ranking-holdout-distractor-69.txt",
+      "scope": "personal",
+      "text": "# Garden maintenance overview\nThis is a fictional informational brochure. Garden maintenance requirements and renewal schedules are general guidance. No household receipt, amount, expiry, coordinator or appointment is recorded here. Brochure reference INFO-7069."
+    }
+  ],
+  "questions": [
+    {
+      "id": "ranking-holdout-washer-meaning",
+      "case_group": "ranking-holdout-washer-event",
+      "split": "holdout",
+      "query": "我洗衣机的保修什么时候到期？",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-washer"
+      ],
+      "required_text": [
+        "2032-04-18",
+        "WSH-6418"
+      ]
+    },
+    {
+      "id": "ranking-holdout-washer-literal",
+      "case_group": "ranking-holdout-washer-event",
+      "split": "holdout",
+      "query": "Washing machine warranty valid until 2032-04-18. Receipt reference WSH-6418.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-washer"
+      ],
+      "required_text": [
+        "2032-04-18",
+        "WSH-6418"
+      ]
+    },
+    {
+      "id": "ranking-holdout-water-meaning",
+      "case_group": "ranking-holdout-water-event",
+      "split": "holdout",
+      "query": "What is the deadline and amount for my water bill?",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-water"
+      ],
+      "required_text": [
+        "2031-09-23",
+        "CAD 74.80"
+      ]
+    },
+    {
+      "id": "ranking-holdout-water-literal",
+      "case_group": "ranking-holdout-water-event",
+      "split": "holdout",
+      "query": "Water bill payment due 2031-09-23. Amount due CAD 74.80. Invoice WATER-8724.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-water"
+      ],
+      "required_text": [
+        "2031-09-23",
+        "CAD 74.80"
+      ]
+    },
+    {
+      "id": "ranking-holdout-volunteer-meaning",
+      "case_group": "ranking-holdout-volunteer-event",
+      "split": "holdout",
+      "query": "我做了多少小时义工，联系人是谁？",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-volunteer"
+      ],
+      "required_text": [
+        "37 hours",
+        "Morgan Fiction"
+      ]
+    },
+    {
+      "id": "ranking-holdout-volunteer-literal",
+      "case_group": "ranking-holdout-volunteer-event",
+      "split": "holdout",
+      "query": "Community volunteer service: 37 hours completed. Coordinator: Morgan Fiction. Event reference VOL-9321.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-volunteer"
+      ],
+      "required_text": [
+        "37 hours",
+        "Morgan Fiction"
+      ]
+    },
+    {
+      "id": "ranking-holdout-pet-meaning",
+      "case_group": "ranking-holdout-pet-event",
+      "split": "holdout",
+      "query": "When is Orbit due for the next rabies vaccination?",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-pet"
+      ],
+      "required_text": [
+        "2033-05-17",
+        "VET-5371"
+      ]
+    },
+    {
+      "id": "ranking-holdout-pet-literal",
+      "case_group": "ranking-holdout-pet-event",
+      "split": "holdout",
+      "query": "Pet name: Orbit. Rabies vaccination next due 2033-05-17. Veterinary reference VET-5371.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-pet"
+      ],
+      "required_text": [
+        "2033-05-17",
+        "VET-5371"
+      ]
+    },
+    {
+      "id": "ranking-holdout-fitness-meaning",
+      "case_group": "ranking-holdout-fitness-event",
+      "split": "holdout",
+      "query": "健身会员下次哪天扣多少钱？",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-fitness"
+      ],
+      "required_text": [
+        "CAD 48.25",
+        "2031-11-06"
+      ]
+    },
+    {
+      "id": "ranking-holdout-fitness-literal",
+      "case_group": "ranking-holdout-fitness-event",
+      "split": "holdout",
+      "query": "Fitness membership renewal charge CAD 48.25 on 2031-11-06. Member reference GYM-6802.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-fitness"
+      ],
+      "required_text": [
+        "CAD 48.25",
+        "2031-11-06"
+      ]
+    },
+    {
+      "id": "ranking-holdout-car-meaning",
+      "case_group": "ranking-holdout-car-event",
+      "split": "holdout",
+      "query": "What is the expiration date of my vehicle registration?",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-car"
+      ],
+      "required_text": [
+        "2032-08-29",
+        "TEST-5836"
+      ]
+    },
+    {
+      "id": "ranking-holdout-car-literal",
+      "case_group": "ranking-holdout-car-event",
+      "split": "holdout",
+      "query": "Vehicle registration expires 2032-08-29. Plate: TEST-5836. Permit reference CAR-2958.",
+      "scope": "personal",
+      "expected_documents": [
+        "ranking-holdout-car"
+      ],
+      "required_text": [
+        "2032-08-29",
+        "TEST-5836"
+      ]
+    },
+    {
+      "id": "ranking-holdout-negative-water",
+      "case_group": "ranking-holdout-water-event",
+      "split": "holdout",
+      "query": "What did I pay for water in 2040?",
+      "positive": false,
+      "scope": "personal"
+    },
+    {
+      "id": "ranking-holdout-negative-volunteer",
+      "case_group": "ranking-holdout-volunteer-event",
+      "split": "holdout",
+      "query": "How many volunteer hours did my father complete?",
+      "positive": false,
+      "scope": "personal"
+    },
+    {
+      "id": "ranking-holdout-negative-pet",
+      "case_group": "ranking-holdout-pet-event",
+      "split": "holdout",
+      "query": "What time is the next veterinary appointment?",
+      "positive": false,
+      "scope": "personal"
+    },
+    {
+      "id": "ranking-holdout-negative-unknown",
+      "case_group": "ranking-holdout-unknown-event",
+      "split": "holdout",
+      "query": "What is my current submarine registration number?",
+      "positive": false,
+      "scope": "personal"
+    }
+  ]
+}

@@ -265,6 +265,9 @@ def cmd_pull_model(name):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "private":
+        from mr_private import entrypoint
+        raise SystemExit(entrypoint(sys.argv[2:]))
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("stats")
