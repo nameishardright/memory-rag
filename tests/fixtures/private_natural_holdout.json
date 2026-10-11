@@ -1,0 +1,771 @@
+{
+ "version": 1,
+ "synthetic": true,
+ "label_origin": "agent_authored_fictional_natural_questions_without_source_names",
+ "boundary": "Agent-authored fictional holdout frozen before the first retrieval and consumed once. Questions carry no source names. The author also wrote the retrieval changes, so this is a targeted diagnostic, not real private accuracy and not an independent human evaluation.",
+ "documents": [
+  {
+   "id": "ho-offer",
+   "file": "03_work\\Kestrel Fictional\\Quinn Placeholder employment agreement.txt",
+   "scope": "personal",
+   "text": "# Employment agreement\nKestrel Fictional Analytics Corp. employs Quinn Placeholder as Staff Data Engineer.\nEffective date: 2025-01-06.\nEmployee number: 204417.\n\n# Remuneration\nAnnual base pay: CAD 141,750.00.\nTarget bonus: 12% of base pay.\n\n# Share plan\nGrant: 1,800 restricted share units, vesting quarterly over three years.\n\n# Leave\nPaid time off: 22 days each year.\nPersonal days: 5."
+  },
+  {
+   "id": "ho-old-contract",
+   "file": "90_archive\\backup 2021\\Quinn Placeholder contract Fernbank.txt",
+   "scope": "history",
+   "text": "# Employment contract\nFernbank Fictional Media employs Quinn Placeholder as Data Analyst.\nAnnual base pay: CAD 72,300.\nPaid time off: 15 days each year.\nGrant: no share units.",
+   "purpose": "historical"
+  },
+  {
+   "id": "ho-nomination",
+   "file": "01_identity\\immigration\\Quinn Placeholder nomination certificate.txt",
+   "scope": "personal",
+   "text": "# Provincial nomination certificate\nNominee: Quinn Placeholder.\nProgram stream: Provincial Nominee, Skilled Worker stream.\nCertificate number: SYN-PNP-70233-118.\nValid until: 2024-08-15."
+  },
+  {
+   "id": "ho-landing",
+   "file": "01_identity\\immigration\\Quinn Placeholder landing record.txt",
+   "scope": "personal",
+   "text": "# Record of landing\nName: Quinn Placeholder.\nLanded on: 2024-02-27.\nOfficer: Hélène Tremblay-Fictif.\nOffice: Lacolle, Québec.\nRecord number: SYN-LAND-66012."
+  },
+  {
+   "id": "ho-mortgage",
+   "file": "04_finance\\housing\\Fictional townhouse mortgage commitment.txt",
+   "scope": "personal",
+   "text": "# Borrower and lender\n1.1 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n1.2 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n1.3 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\nBorrower: Quinn Placeholder.\n\nLender: Larkspur Fictional Trust.\n\n1.4 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n1.5 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n1.6 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n# Property\n2.1 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n2.2 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n2.3 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\nMortgaged property: 18 Pretend Crescent, a freehold townhouse.\n\n2.4 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n2.5 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n2.6 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n# Principal\n3.1 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n3.2 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n3.3 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\nPrincipal amount: CAD 488,000, advanced on the completion date.\n\n3.4 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n3.5 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n3.6 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n# Interest\n4.1 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n4.2 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n4.3 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\nInterest rate: 4.89% per year, fixed, calculated half-yearly not in advance.\n\n4.4 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n4.5 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n4.6 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n# Payments\n5.1 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n5.2 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n5.3 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\nRegular payment: CAD 2,812.36, due on the first day of each month.\n\n5.4 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n5.5 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n5.6 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n# Amortization\n6.1 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n6.2 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n6.3 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\nAmortization period: 25 years.\n\n6.4 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n6.5 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n6.6 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n# Prepayment\n7.1 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n7.2 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n7.3 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\nPrepayment privilege: up to 15% of the original principal in each year without charge.\n\n7.4 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n7.5 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n7.6 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n# Insurance\n8.1 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n8.2 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n8.3 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\nThe borrower keeps the property insured for its full replacement cost.\n\n8.4 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n8.5 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n8.6 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n# Term and maturity\n9.1 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n9.2 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n9.3 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\nTerm: 5 years.\n\nMaturity date: 2030-07-01.\n\n9.4 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n9.5 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n9.6 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n# Default\n10.1 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n10.2 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n10.3 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\nA payment that is more than 15 days late is a default under this section.\n\n10.4 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n10.5 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n10.6 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion."
+  },
+  {
+   "id": "ho-mortgage-ad",
+   "file": "04_finance\\housing\\Fictional lender rate sheet.txt",
+   "scope": "personal",
+   "text": "# Posted rates\nFive-year fixed from 5.34%.\nVariable from prime minus 0.40%.\nPosted rates are advertising and do not form part of any commitment."
+  },
+  {
+   "id": "ho-lease-zh",
+   "file": "04_finance\\housing\\苏州虚构房屋租赁合同.txt",
+   "scope": "personal",
+   "text": "# 当事人与房屋\n第1条之1 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第1条之2 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第1条之3 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n出租方：虚构榆树置业有限公司。\n\n承租方：奎因占位。\n\n房屋：苏州市虚构区假想路 9 号 2 幢 1103 室。\n\n第1条之4 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第1条之5 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第1条之6 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第1条之7 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n# 租赁期限\n第2条之1 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第2条之2 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第2条之3 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n租赁期限：自 2019 年 3 月 1 日起至 2021 年 2 月 28 日止。\n\n第2条之4 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第2条之5 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第2条之6 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第2条之7 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n# 租金\n第3条之1 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第3条之2 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第3条之3 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n月租金：人民币 6,200 元，按季度支付。\n\n第3条之4 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第3条之5 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第3条之6 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n第3条之7 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n# 押金\n第4条之1 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第4条之2 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第4条之3 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n押金：人民币 12,400 元，于签约当日支付。\n\n第4条之4 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第4条之5 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n第4条之6 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第4条之7 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n# 物业与能耗\n第5条之1 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第5条之2 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第5条之3 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n物业管理费由出租方承担，水电燃气费由承租方按实结算。\n\n第5条之4 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n第5条之5 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第5条之6 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第5条之7 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n# 维修责任\n第6条之1 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第6条之2 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第6条之3 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n房屋主体结构及原有设施的维修由出租方负责。\n\n第6条之4 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第6条之5 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第6条之6 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第6条之7 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n# 转租\n第7条之1 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第7条之2 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n第7条之3 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n未经出租方书面同意，承租方不得转租。\n\n第7条之4 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第7条之5 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第7条之6 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第7条之7 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n# 退租与交还\n第8条之1 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。\n\n第8条之2 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第8条之3 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n承租方应提前 60 日书面通知出租方不再续租。\n\n第8条之4 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第8条之5 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第8条之6 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第8条之7 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n# 违约责任\n第9条之1 本条所称期间按日计算的，开始当日不计入，届满当日计入；届满日为周末或法定节假日的，顺延至其后第一个工作日。除双方另行书面约定外，各项期限均应严格遵守。\n\n第9条之2 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第9条之3 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n逾期支付租金的，每逾期一日按欠付金额的万分之五支付违约金。\n\n第9条之4 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n第9条之5 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第9条之6 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第9条之7 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n# 签署\n第10条之1 依本条发出的通知应以书面形式送达对方载明的地址，或发送至对方最近一次确认的电子联系方式。通知自发出后的下一个工作日视为送达。\n\n第10条之2 本条部分内容被认定无效或无法执行的，不影响其余内容的效力；双方应本着诚信原则协商，以效果最接近的条款替换受影响的内容。\n\n第10条之3 除本文件其他条款另有明确约定外，双方各自承担己方聘请专业人员所产生的费用，包括但不限于法律、财务及查验费用。\n\n本合同于 2019 年 2 月 20 日在苏州签署。\n\n第10条之4 各条标题仅为阅读方便而设，不影响条文含义。条文中提及一方的，包括其合法的承继人；单数表述在适用时包含复数。\n\n第10条之5 任何一方未行使或迟延行使本条项下权利的，不构成对该权利的放弃；单独或部分行使某项权利，亦不妨碍其日后继续或全面行使。\n\n第10条之6 本条适用标的物所在地现行有效的法律。因本条引起的争议，双方应先行协商；协商不成的，提交标的物所在地有管辖权的人民法院处理。\n\n第10条之7 双方确认已完整阅读本条全部内容，并在签署前有充分时间征询独立意见。本条之外的口头说明、宣传资料或往来信息均不构成双方约定的一部分，如有不一致，以本书面文本为准。"
+  },
+  {
+   "id": "ho-tuition-2023",
+   "file": "04_finance\\tax\\Sasha Placeholder T2202 2023.txt",
+   "scope": "personal",
+   "text": "# Tuition and enrolment certificate\nStudent: Sasha Placeholder.\nInstitution: Fictional Orchard College.\nEligible tuition fees: 9,840.00\nMonths full-time: 8"
+  },
+  {
+   "id": "ho-tuition-2022",
+   "file": "04_finance\\tax\\Sasha Placeholder T2202 2022.txt",
+   "scope": "personal",
+   "text": "# Tuition and enrolment certificate\nStudent: Sasha Placeholder.\nInstitution: Fictional Orchard College.\nEligible tuition fees: 9,412.50\nMonths full-time: 8"
+  },
+  {
+   "id": "ho-tuition-2021",
+   "file": "04_finance\\tax\\Sasha Placeholder T2202 2021.txt",
+   "scope": "personal",
+   "text": "# Tuition and enrolment certificate\nStudent: Sasha Placeholder.\nInstitution: Fictional Orchard College.\nEligible tuition fees: 8,975.25\nMonths full-time: 8"
+  },
+  {
+   "id": "ho-report-term1",
+   "file": "02_family\\Wren\\Wren report card grade 1 term 1.txt",
+   "scope": "personal",
+   "text": "# Elementary progress report\nPupil: Wren Placeholder.\nReading: B\nMathematics: B+\nDays absent: 1"
+  },
+  {
+   "id": "ho-report-term2",
+   "file": "02_family\\Wren\\Wren report card grade 1 term 2.txt",
+   "scope": "personal",
+   "text": "# Elementary progress report\nPupil: Wren Placeholder.\nReading: B+\nMathematics: A-\nDays absent: 3"
+  },
+  {
+   "id": "ho-network",
+   "file": "05_misc\\Home network notes.txt",
+   "scope": "personal",
+   "text": "# Home network\nThe architecture is a three-node mesh with a wired backhaul to the basement switch.\nRouter admin page: 192.168.50.1.\nGuest network name: Fictional-Guest-5G."
+  },
+  {
+   "id": "ho-insurance",
+   "file": "04_finance\\insurance\\Fictional home insurance declaration.txt",
+   "scope": "personal",
+   "text": "# Home insurance declaration\nPolicy number: SYN-INS-4471-0092.\nDwelling coverage: CAD 640,000.\nDeductible: CAD 2,000.\nRenewal date: 2026-03-15."
+  },
+  {
+   "id": "ho-rental-current",
+   "file": "04_finance\\housing\\Fictional basement suite tenancy.txt",
+   "scope": "personal",
+   "text": "# Tenancy agreement\nTenant: Marlow Stand-In.\nMonthly rent: CAD 2,450.00.\nTenancy begins: 2025-02-01.\nRent is payable to: Quinn Placeholder."
+  },
+  {
+   "id": "ho-marriage",
+   "file": "01_identity\\公证\\虚构结婚公证书.txt",
+   "scope": "personal",
+   "text": "# 结婚公证书\n申请人：奎因占位、萨莎占位。\n登记日期：二〇一七年五月二十日。\n登记机关：杭州市虚构区民政局。\n公证书编号：（2023）虚构证字第8120号。"
+  },
+  {
+   "id": "ho-birth-notarization",
+   "file": "01_identity\\公证\\虚构出生公证书.txt",
+   "scope": "personal",
+   "text": "# 出生公证书\n申请人：奎因占位。\n出生日期：一九八九年九月三日。\n出生地：浙江省杭州市。\n公证书编号：（2023）虚构证字第8121号。"
+  },
+  {
+   "id": "ho-code-readme",
+   "file": "06_code\\ledger-sync\\README.md",
+   "scope": "technical",
+   "text": "# Ledger Sync\nA fictional reconciliation service.\nMessage broker: NATS.\nLanguage: Go."
+  },
+  {
+   "id": "ho-code-other",
+   "file": "06_code\\photo-sorter\\README.md",
+   "scope": "technical",
+   "text": "# Photo Sorter\nA fictional script that groups images by capture date.\nLanguage: Python."
+  },
+  {
+   "id": "ho-stock-note",
+   "file": "stock\\ORBX\\Fictional ORBX thesis.md",
+   "scope": "stock",
+   "text": "# ORBX thesis\nFictional ticker ORBX.\nPrice target: USD 58.\nNext earnings: 2025-10-29."
+  },
+  {
+   "id": "ho-stock-other",
+   "file": "stock\\VELA\\Fictional VELA note.md",
+   "scope": "stock",
+   "text": "# VELA note\nFictional ticker VELA.\nPrice target: USD 14.\nShare count: 220 million."
+  },
+  {
+   "id": "ho-passport",
+   "file": "01_identity\\Quinn Placeholder passport.txt",
+   "scope": "personal",
+   "text": "# Passport\nHolder: Quinn Placeholder.\nPassport number: SYN-P-4410982.\nDate of expiry: 2034-06-11.\nPlace of issue: Vancouver."
+  },
+  {
+   "id": "ho-spouse-passport",
+   "file": "01_identity\\Sasha Placeholder passport.txt",
+   "scope": "personal",
+   "text": "# Passport\nHolder: Sasha Placeholder.\nPassport number: SYN-P-7720645.\nDate of expiry: 2031-10-02."
+  },
+  {
+   "id": "ho-health-card",
+   "file": "01_identity\\Quinn Placeholder health card.txt",
+   "scope": "personal",
+   "text": "# Provincial health card\nCard number: SYN-HC-5521-908-441.\nVersion code: QK.\nRenew by: 2027-09-03."
+  },
+  {
+   "id": "ho-sin",
+   "file": "01_identity\\Quinn Placeholder social insurance confirmation.txt",
+   "scope": "personal",
+   "text": "# Confirmation of social insurance number\nIssued to: Quinn Placeholder.\nNumber: SYN-900-111-222.\nDate of issue: 2024-03-04."
+  },
+  {
+   "id": "ho-gas",
+   "file": "04_finance\\bills\\Fictional gas bill 2025-03.txt",
+   "scope": "personal",
+   "text": "# Natural gas bill\nAccount: SYN-GAS-118204.\nAmount due: CAD 142.87.\nDue date: 2025-04-09."
+  },
+  {
+   "id": "ho-electricity",
+   "file": "04_finance\\bills\\Fictional electricity bill 2025-03.txt",
+   "scope": "personal",
+   "text": "# Electricity bill\nAccount: SYN-EL-330771.\nAmount due: CAD 88.40.\nDue date: 2025-04-12."
+  },
+  {
+   "id": "ho-internet",
+   "file": "04_finance\\bills\\Fictional internet plan.txt",
+   "scope": "personal",
+   "text": "# Internet service summary\nSpeed: 500 Mbps.\nMonthly charge: CAD 79.00.\nContract ends: 2026-08-31."
+  },
+  {
+   "id": "ho-tfsa",
+   "file": "04_finance\\Fictional TFSA statement 2024.txt",
+   "scope": "personal",
+   "text": "# TFSA annual statement\nContributions in the year: CAD 7,000.00.\nClosing value: CAD 41,206.33."
+  },
+  {
+   "id": "ho-property-tax",
+   "file": "04_finance\\housing\\Fictional property tax notice 2025.txt",
+   "scope": "personal",
+   "text": "# Property tax notice\nRoll number: SYN-ROLL-19-044-210.\nTotal levy: CAD 4,318.60.\nFinal instalment due: 2025-09-02."
+  },
+  {
+   "id": "ho-car-lease",
+   "file": "04_finance\\Fictional vehicle lease.txt",
+   "scope": "personal",
+   "text": "# Vehicle lease\nVehicle: 2024 Fictional Crossover.\nMonthly payment: CAD 512.19.\nLease ends: 2028-01-31."
+  },
+  {
+   "id": "ho-daycamp",
+   "file": "02_family\\Wren\\Summer day camp registration.txt",
+   "scope": "personal",
+   "text": "# Day camp registration\nChild: Wren Placeholder.\nWeeks: July 7 to August 1.\nFee: CAD 1,280.00."
+  },
+  {
+   "id": "ho-pediatric",
+   "file": "05_health\\Wren well-child visit.txt",
+   "scope": "personal",
+   "text": "# Well-child visit summary\nChild: Wren Placeholder.\nHeight: 118 cm.\nWeight: 21.4 kg.\nVisit date: 2025-03-18."
+  },
+  {
+   "id": "ho-optometry",
+   "file": "05_health\\Quinn Placeholder eye exam.txt",
+   "scope": "personal",
+   "text": "# Eye examination\nRight eye: -2.25.\nLeft eye: -1.75.\nExam date: 2025-01-22."
+  },
+  {
+   "id": "ho-flight",
+   "file": "02_family\\travel\\Fictional itinerary Halifax.txt",
+   "scope": "personal",
+   "text": "# Flight itinerary\nFlight: SY 618, Calgary YYC to Halifax YHZ.\nDeparture: 2025-08-09 at 06:50.\nBooking reference: SYNHFX2."
+  },
+  {
+   "id": "ho-rental-car",
+   "file": "02_family\\travel\\Fictional car rental Halifax.txt",
+   "scope": "personal",
+   "text": "# Car rental agreement\nPick-up: 2025-08-09.\nReturn: 2025-08-16.\nAgreement number: SYN-RNT-880034.\nEstimated total: CAD 742.10."
+  },
+  {
+   "id": "ho-diploma",
+   "file": "03_work\\education\\Orchard College diploma.txt",
+   "scope": "personal",
+   "text": "# Diploma\nGraduate: Quinn Placeholder.\nCredential: Master of Data Science.\nConferred: 2015-11-07."
+  },
+  {
+   "id": "ho-performance",
+   "file": "03_work\\Kestrel Fictional\\Performance review 2025.txt",
+   "scope": "personal",
+   "text": "# Performance review\nOverall rating: Exceeds expectations.\nMerit increase: 4.5%.\nReviewer: Ellis Sample."
+  },
+  {
+   "id": "ho-benefits",
+   "file": "03_work\\Kestrel Fictional\\Benefits summary.txt",
+   "scope": "personal",
+   "text": "# Group benefits summary\nDental: 80% of basic services.\nVision: CAD 300 every 24 months.\nPlan member number: SYN-BEN-31077."
+  },
+  {
+   "id": "ho-will",
+   "file": "01_identity\\Fictional will summary.txt",
+   "scope": "personal",
+   "text": "# Summary of will\nExecutor: Sasha Placeholder.\nAlternate executor: Ellis Sample.\nSigned on: 2024-11-19."
+  },
+  {
+   "id": "ho-vet",
+   "file": "05_misc\\Fictional veterinary invoice.txt",
+   "scope": "personal",
+   "text": "# Veterinary invoice\nPatient: Biscuit, domestic shorthair.\nTotal: CAD 214.35.\nVisit: 2025-02-27."
+  },
+  {
+   "id": "ho-storage",
+   "file": "05_misc\\Fictional storage locker.txt",
+   "scope": "personal",
+   "text": "# Storage rental\nUnit: B-217.\nMonthly charge: CAD 119.00.\nAccess code: SYN-CODE-4410."
+  },
+  {
+   "id": "ho-piano",
+   "file": "02_family\\Wren\\Piano lessons invoice.txt",
+   "scope": "personal",
+   "text": "# Music lessons invoice\nPupil: Wren Placeholder.\nLessons: twelve half-hour lessons.\nAmount: CAD 420.00."
+  },
+  {
+   "id": "ho-donation",
+   "file": "04_finance\\tax\\Fictional donation receipt 2024.txt",
+   "scope": "personal",
+   "text": "# Official donation receipt\nCharity: Imaginary Shoreline Food Bank.\nEligible amount: CAD 600.00.\nReceipt number: SYN-DON-20244."
+  },
+  {
+   "id": "ho-medical-expense",
+   "file": "04_finance\\tax\\Fictional medical expense summary 2024.txt",
+   "scope": "personal",
+   "text": "# Medical expense summary\nPrescriptions: CAD 318.44.\nPhysiotherapy: CAD 540.00.\nTotal claimed: CAD 858.44."
+  }
+ ],
+ "questions": [
+  {
+   "id": "hq-rsu-zh",
+   "case_group": "ho-offer-event",
+   "split": "holdout",
+   "query": "公司给我的股票一共有多少股？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-offer"
+   ],
+   "required_text": [
+    "1,800 restricted share units"
+   ]
+  },
+  {
+   "id": "hq-pto-zh",
+   "case_group": "ho-offer-event",
+   "split": "holdout",
+   "query": "我现在一年有几天带薪假？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-offer"
+   ],
+   "required_text": [
+    "22 days"
+   ]
+  },
+  {
+   "id": "hq-employee-number",
+   "case_group": "ho-offer-event",
+   "split": "holdout",
+   "query": "204417 是谁的工号？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-offer"
+   ],
+   "required_text": [
+    "Employee number: 204417"
+   ]
+  },
+  {
+   "id": "hq-bonus-en",
+   "case_group": "ho-offer-event",
+   "split": "holdout",
+   "query": "What is my target bonus percentage?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-offer"
+   ],
+   "required_text": [
+    "12% of base pay"
+   ]
+  },
+  {
+   "id": "hq-pnp-program-zh",
+   "case_group": "ho-nomination-event",
+   "split": "holdout",
+   "query": "我的移民项目是哪个类别？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-nomination"
+   ],
+   "required_text": [
+    "Provincial Nominee"
+   ]
+  },
+  {
+   "id": "hq-pnp-number-partial",
+   "case_group": "ho-nomination-event",
+   "split": "holdout",
+   "query": "70233-118",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-nomination"
+   ],
+   "required_text": [
+    "SYN-PNP-70233-118"
+   ]
+  },
+  {
+   "id": "hq-landing-officer-en",
+   "case_group": "ho-landing-event",
+   "split": "holdout",
+   "query": "Helene Tremblay signed which of my records?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-landing"
+   ],
+   "required_text": [
+    "Hélène Tremblay-Fictif"
+   ]
+  },
+  {
+   "id": "hq-landing-date-zh",
+   "case_group": "ho-landing-event",
+   "split": "holdout",
+   "query": "我是哪天登陆的？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-landing"
+   ],
+   "required_text": [
+    "2024-02-27"
+   ]
+  },
+  {
+   "id": "hq-mortgage-rate-zh",
+   "case_group": "ho-mortgage-event",
+   "split": "holdout",
+   "query": "房贷利率是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-mortgage"
+   ],
+   "required_text": [
+    "4.89%"
+   ]
+  },
+  {
+   "id": "hq-mortgage-maturity-zh",
+   "case_group": "ho-mortgage-event",
+   "split": "holdout",
+   "query": "房贷哪天到期？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-mortgage"
+   ],
+   "required_text": [
+    "2030-07-01"
+   ]
+  },
+  {
+   "id": "hq-mortgage-amortization-en",
+   "case_group": "ho-mortgage-event",
+   "split": "holdout",
+   "query": "What is the amortization period of my mortgage?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-mortgage"
+   ],
+   "required_text": [
+    "25 years"
+   ]
+  },
+  {
+   "id": "hq-mortgage-payment-en",
+   "case_group": "ho-mortgage-event",
+   "split": "holdout",
+   "query": "How much is my regular mortgage payment each month?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-mortgage"
+   ],
+   "required_text": [
+    "CAD 2,812.36"
+   ]
+  },
+  {
+   "id": "hq-lease-deposit-en",
+   "case_group": "ho-lease-zh-event",
+   "split": "holdout",
+   "query": "How much was the security deposit on my Suzhou apartment lease?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-lease-zh"
+   ],
+   "required_text": [
+    "12,400"
+   ]
+  },
+  {
+   "id": "hq-lease-rent-zh",
+   "case_group": "ho-lease-zh-event",
+   "split": "holdout",
+   "query": "苏州那套房子当时的月租金是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-lease-zh"
+   ],
+   "required_text": [
+    "6,200"
+   ]
+  },
+  {
+   "id": "hq-tuition-2022-zh",
+   "case_group": "ho-tuition-2022-event",
+   "split": "holdout",
+   "query": "2022 年的 T2202 学费是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-tuition-2022"
+   ],
+   "required_text": [
+    "9,412.50"
+   ]
+  },
+  {
+   "id": "hq-tuition-2023-en",
+   "case_group": "ho-tuition-2023-event",
+   "split": "holdout",
+   "query": "What were the eligible tuition fees on the 2023 T2202?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-tuition-2023"
+   ],
+   "required_text": [
+    "9,840.00"
+   ]
+  },
+  {
+   "id": "hq-report-term2-zh",
+   "case_group": "ho-report-event",
+   "split": "holdout",
+   "query": "Wren 一年级第二学期的数学成绩是什么？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-report-term2"
+   ],
+   "required_text": [
+    "Mathematics: A-"
+   ]
+  },
+  {
+   "id": "hq-network-zh",
+   "case_group": "ho-network-event",
+   "split": "holdout",
+   "query": "家里网络的架构是怎么接的？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-network"
+   ],
+   "required_text": [
+    "three-node mesh"
+   ]
+  },
+  {
+   "id": "hq-insurance-partial-id",
+   "case_group": "ho-insurance-event",
+   "split": "holdout",
+   "query": "4471-0092",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-insurance"
+   ],
+   "required_text": [
+    "SYN-INS-4471-0092"
+   ]
+  },
+  {
+   "id": "hq-insurance-deductible-zh",
+   "case_group": "ho-insurance-event",
+   "split": "holdout",
+   "query": "房屋保险的免赔额是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-insurance"
+   ],
+   "required_text": [
+    "CAD 2,000"
+   ]
+  },
+  {
+   "id": "hq-rent-amount-zh",
+   "case_group": "ho-rental-event",
+   "split": "holdout",
+   "query": "哪份合同的月租是 2450？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-rental-current"
+   ],
+   "required_text": [
+    "CAD 2,450.00"
+   ]
+  },
+  {
+   "id": "hq-marriage-date-en",
+   "case_group": "ho-marriage-event",
+   "split": "holdout",
+   "query": "What is the registration date on my marriage notarization?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-marriage"
+   ],
+   "required_text": [
+    "二〇一七年五月二十日"
+   ]
+  },
+  {
+   "id": "hq-birthplace-en",
+   "case_group": "ho-birth-event",
+   "split": "holdout",
+   "query": "Which city was I born in according to the birth notarization?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-birth-notarization"
+   ],
+   "required_text": [
+    "浙江省杭州市"
+   ]
+  },
+  {
+   "id": "hq-code-broker-en",
+   "case_group": "ho-code-event",
+   "split": "holdout",
+   "query": "Which message broker does my Ledger Sync code use?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-code-readme"
+   ],
+   "required_text": [
+    "NATS"
+   ]
+  },
+  {
+   "id": "hq-stock-target-zh",
+   "case_group": "ho-stock-event",
+   "split": "holdout",
+   "query": "ORBX 这只股票的目标价是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-stock-note"
+   ],
+   "required_text": [
+    "USD 58"
+   ]
+  },
+  {
+   "id": "hq-passport-expiry-zh",
+   "case_group": "ho-passport-event",
+   "split": "holdout",
+   "query": "我的护照哪天过期？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-passport"
+   ],
+   "required_text": [
+    "2034-06-11"
+   ]
+  },
+  {
+   "id": "hq-health-card-en",
+   "case_group": "ho-health-card-event",
+   "split": "holdout",
+   "query": "When do I need to renew my health card?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-health-card"
+   ],
+   "required_text": [
+    "2027-09-03"
+   ]
+  },
+  {
+   "id": "hq-gas-march-zh",
+   "case_group": "ho-gas-event",
+   "split": "holdout",
+   "query": "三月份的燃气费是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-gas"
+   ],
+   "required_text": [
+    "CAD 142.87"
+   ]
+  },
+  {
+   "id": "hq-property-tax-zh",
+   "case_group": "ho-property-tax-event",
+   "split": "holdout",
+   "query": "2025 年房产税最后一期哪天交？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-property-tax"
+   ],
+   "required_text": [
+    "2025-09-02"
+   ]
+  },
+  {
+   "id": "hq-flight-halifax-zh",
+   "case_group": "ho-flight-event",
+   "split": "holdout",
+   "query": "去哈利法克斯的航班是哪天几点？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-flight"
+   ],
+   "required_text": [
+    "2025-08-09 at 06:50"
+   ]
+  },
+  {
+   "id": "hq-spouse-passport-zh",
+   "case_group": "ho-spouse-passport-event",
+   "split": "holdout",
+   "query": "我爱人的护照号码是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-spouse-passport"
+   ],
+   "required_text": [
+    "SYN-P-7720645"
+   ]
+  },
+  {
+   "id": "hq-eye-exam-en",
+   "case_group": "ho-optometry-event",
+   "split": "holdout",
+   "query": "What was my right eye prescription at the last eye exam?",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-optometry"
+   ],
+   "required_text": [
+    "-2.25"
+   ]
+  },
+  {
+   "id": "hq-merit-zh",
+   "case_group": "ho-performance-event",
+   "split": "holdout",
+   "query": "今年绩效评估给我涨了多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-performance"
+   ],
+   "required_text": [
+    "4.5%"
+   ]
+  },
+  {
+   "id": "hq-executor-zh",
+   "case_group": "ho-will-event",
+   "split": "holdout",
+   "query": "遗嘱的执行人是谁？",
+   "scope": "auto",
+   "expected_documents": [
+    "ho-will"
+   ],
+   "required_text": [
+    "Executor: Sasha Placeholder"
+   ]
+  },
+  {
+   "id": "hn-us-tax",
+   "case_group": "negative-hn-us-tax",
+   "split": "holdout",
+   "positive": false,
+   "query": "我的美国报税表在哪里？",
+   "scope": "auto"
+  },
+  {
+   "id": "hn-2026-tuition",
+   "case_group": "negative-hn-2026-tuition",
+   "split": "holdout",
+   "positive": false,
+   "query": "What were the eligible tuition fees on the 2026 T2202?",
+   "scope": "auto"
+  },
+  {
+   "id": "hn-absent-id",
+   "case_group": "negative-hn-absent-id",
+   "split": "holdout",
+   "positive": false,
+   "query": "SYN-NOWHERE-999999",
+   "scope": "auto"
+  },
+  {
+   "id": "hn-boat",
+   "case_group": "negative-hn-boat",
+   "split": "holdout",
+   "positive": false,
+   "query": "我的船的保险什么时候续保？",
+   "scope": "auto"
+  },
+  {
+   "id": "hn-rrsp-limit",
+   "case_group": "negative-hn-rrsp-limit",
+   "split": "holdout",
+   "positive": false,
+   "query": "What is my RRSP deduction limit for 2031?",
+   "scope": "auto"
+  },
+  {
+   "id": "hn-dog-licence",
+   "case_group": "negative-hn-dog-licence",
+   "split": "holdout",
+   "positive": false,
+   "query": "狗的牌照号是多少？",
+   "scope": "auto"
+  }
+ ]
+}

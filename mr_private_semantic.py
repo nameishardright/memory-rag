@@ -13,12 +13,21 @@ import threading
 MODEL_ID = 'intfloat/multilingual-e5-small'
 REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
 VECTOR_VERSION = 1
-ENCODER_VERSION = 1
+ENCODER_VERSION = 2  # 2: the embedded passage starts with its folder and file name
 
 
 def default_model_dir():
     base = Path(os.environ.get('LOCALAPPDATA') or Path.home() / '.local' / 'share')
     return base / 'memory-rag' / 'models' / 'multilingual-e5-small'
+
+
+def source_label(file):
+    """Folder and file name without extension: often the only place a record's type or year appears."""
+    parts = [part for part in str(file).replace('\\', '/').replace('!/', '/').split('/') if part]
+    if not parts:
+        return ''
+    name = parts[-1].rsplit('.', 1)[0] if '.' in parts[-1][1:] else parts[-1]
+    return ' / '.join([*parts[-2:-1], name])[:120]
 
 
 def chunk_signature(chunks):
@@ -84,7 +93,8 @@ class LocalEncoder:
         with self._lock:
             tokenizer = self._get_tokenizer()
             heading = chunk.get('heading', '')[:160]
-            prefix = 'passage: ' + heading + '\n'
+            label = source_label(chunk.get('file', ''))
+            prefix = 'passage: ' + (label + '\n' if label else '') + heading + '\n'
             budget = max(64, 508 - len(tokenizer(prefix, add_special_tokens=False)['input_ids']))
             body = chunk['text']
             encoded = tokenizer(body, add_special_tokens=False, return_offsets_mapping=True,
@@ -145,6 +155,8 @@ class PrivateVector:
         self.ready = False
         self.state = 'not_prepared'
         self._old = None
+        self._by_document = None
+        self._last_query = None
         if self.cache and self.cache.is_file() and self.loader:
             self._old = self.loader(self.cache)
             if self._old:
@@ -170,7 +182,7 @@ class PrivateVector:
         if not np.isfinite(values).all():
             raise ValueError('Invalid encrypted vector values')
         self.rows, self.emb = rows, values
-        self._old = None
+        self._old = self._by_document = None
         self.ready, self.state = True, 'ready'
 
     def _payload(self, rows, values, complete):
@@ -248,16 +260,43 @@ class PrivateVector:
         if self.cancelled.is_set():
             raise InterruptedError('Session locked')
         self.rows, self.emb = rows, np.stack(values)
-        self._old = None
+        self._old = self._by_document = None
         self.ready, self.state = True, 'ready'
         return {'windows': len(rows), 'encoded': encoded, 'reused': reused}
+
+    def _query_vector(self, query):
+        # One question ranks the files and then the passages of each returned file.
+        if self._last_query is None or self._last_query[0] != query:
+            self._last_query = (query, self.encoder.encode([query], query=True)[0])
+        return self._last_query[1]
+
+    def passages(self, query, document_id, topk=10):
+        """Best window score for each passage of one document."""
+        if self.cancelled.is_set():
+            raise InterruptedError('Session locked')
+        if not self.ready or self.emb is None:
+            return []
+        if self._by_document is None:
+            self._by_document = {}
+            for position, row in enumerate(self.rows):
+                self._by_document.setdefault(self.chunks[row['chunk']]['document_id'], []).append(position)
+        positions = self._by_document.get(document_id)
+        if not positions:
+            return []
+        scores = self.emb[positions] @ self._query_vector(query)
+        best = {}
+        for position, score in zip(positions, scores):
+            i = self.rows[position]['chunk']
+            if i not in best or score > best[i]:
+                best[i] = float(score)
+        return sorted(best.items(), key=lambda row: (-row[1], row[0]))[:topk]
 
     def search(self, query, topk=50, group_by_document=False, document_ids=None):
         if self.cancelled.is_set():
             raise InterruptedError('Session locked')
         if not self.ready or self.emb is None:
             return []
-        vector = self.encoder.encode([query], query=True)[0]
+        vector = self._query_vector(query)
         scores = self.emb @ vector
         best = {}
         for row, score in zip(self.rows, scores):
@@ -274,6 +313,9 @@ class PrivateVector:
         self.cancelled.set()
         if self.emb is not None:
             self.emb.fill(0)
+        if self._last_query is not None:
+            self._last_query[1].fill(0)
         self.emb, self._old = None, None
+        self._by_document = self._last_query = None
         self.rows.clear()
         self.ready = False

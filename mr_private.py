@@ -26,8 +26,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import mr_corpus
-from mr_index import TOKENIZER, rrf_files
-from mr_private_index import PrivateBM25
+from mr_index import rrf, rrf_files
+from mr_private_index import PRIVATE_TOKENIZER, PrivateBM25
 from mr_private_policy import (SCOPES, classify, load_policy, policy_signature, project_group)
 
 JOURNAL_MAGIC = b"FAMILYMEMORYv1\x00"
@@ -431,7 +431,7 @@ def import_journals(source, store, password, partitioned=False, policy=None):
     base = {"version": 1, "updated_at": now(), "source": str(source), 'generation': generation,
             'source_root': inventory.get('root'),
             'policy_sha256': policy_signature(policy), 'partitioned': partitioned,
-            'coverage': coverage, 'mode': 'bm25_inverted', 'tokenizer': TOKENIZER}
+            'coverage': coverage, 'mode': 'bm25_inverted', 'tokenizer': PRIVATE_TOKENIZER}
     partitions, total_chunks = {}, 0
     if partitioned:
         for scope in SCOPES:
@@ -467,7 +467,7 @@ def import_journals(source, store, password, partitioned=False, policy=None):
     coverage['default_chunks'] = len(payload['chunks']) if partitioned else sum(c['scope'] == 'personal' for c in payload['chunks'])
     payload.update({
                "source_signature": signature,
-               "coverage": coverage, "mode": "bm25", "tokenizer": TOKENIZER}
+               "coverage": coverage, "mode": "bm25", "tokenizer": PRIVATE_TOKENIZER}
     )
     # Publish the root last: readers either see the previous generation or a
     # complete new generation; never a mixture of sidecar partitions.
@@ -489,8 +489,9 @@ def import_journals(source, store, password, partitioned=False, policy=None):
 
 class PrivateRAG:
     def __init__(self, payload, partition_loader=None, *, mode='bm25', index_loader=None,
-                 index_saver=None, encoder_factory=None):
+                 index_saver=None, encoder_factory=None, auto_scope_chunk_limit=200000):
         self.payload = payload
+        self.auto_scope_chunk_limit = auto_scope_chunk_limit
         self.documents = {d["id"]: d for d in payload["documents"]}
         self.aliases = {alias['id']: (document['id'], alias) for document in payload['documents']
                         for alias in document.get('duplicate_sources', [])}
@@ -567,6 +568,25 @@ class PrivateRAG:
             self.semantic_states[scope] = 'unavailable:' + type(error).__name__
             return None
 
+    def _document_passages(self, scope, document_id, candidates, query, topk):
+        """Dense ranking of one document's passages; empty unless a ready local index exists."""
+        if self.mode != 'hybrid' or scope not in SCOPES or not query.strip():
+            return []
+        try:
+            chunks, _index = self._index(scope)
+            vector = self._vector(scope, chunks)
+            if vector is None or not vector.ready:
+                return []
+            position = {chunk['id']: i for i, chunk in enumerate(candidates)}
+            return [(position[vector.chunks[i]['id']], score)
+                    for i, score in vector.passages(query, document_id, topk)
+                    if vector.chunks[i]['id'] in position]
+        except InterruptedError:
+            raise
+        except Exception as error:
+            self.semantic_states[scope] = 'unavailable:' + type(error).__name__
+            return []
+
     def prepare_semantic(self, scope='personal', progress=None):
         if scope not in SCOPES:
             raise ValueError('Prepare one source scope at a time')
@@ -578,18 +598,56 @@ class PrivateRAG:
         self.semantic_states[scope] = vector.state
         return {'scope': scope, **result}
 
+    def _deferred(self, scope):
+        """A very large partition is opened by an explicit choice, not by one routing keyword."""
+        if scope in self.loaded_scopes:
+            return False
+        metadata = self.payload.get('shards', {}).get(scope) or {}
+        return metadata.get('chunks', 0) > self.auto_scope_chunk_limit
+
     def search(self, query, topk=5, scope="personal", *, lexical_query=None, mode=None):
         self._active()
         if scope not in (*SCOPES, 'all', 'auto'):
             raise ValueError("Unknown source scope")
         if not query.strip() or not 1 <= topk <= 50:
             raise ValueError("A nonempty query and topk between 1 and 50 are required")
-        from mr_private_routing import route_query, named_source
-        route = route_query(query) if scope == 'auto' else {'scope': scope, 'automatic': False, 'reason': 'explicit'}
-        scope = route['scope']
         selected_mode = mode or self.mode
         if selected_mode not in {'bm25', 'hybrid'}:
             raise ValueError('Unknown private retrieval mode')
+        from mr_private_routing import route_query, named_source
+        if scope != 'auto':
+            return self._search_scope(query, topk, {'scope': scope, 'automatic': False, 'reason': 'explicit'},
+                                      lexical_query, selected_mode)
+        route = route_query(query)
+        primary = route['scope']
+        if primary == 'personal':
+            return self._search_scope(query, topk, route, lexical_query, selected_mode)
+        # Keyword routing is a guess: an offer letter mentions stock options and a
+        # resume mentions projects. Personal records are therefore always consulted.
+        if self._deferred(primary):
+            return self._search_scope(query, topk, {**route, 'scope': 'personal', 'deferred_scope': primary},
+                                      lexical_query, selected_mode)
+        first = self._search_scope(query, topk, {**route, 'also_searched': ['personal']}, lexical_query, selected_mode)
+        named = named_source(query) is not None
+        if named and first['hits']:
+            return first
+        second = self._search_scope(query, topk, {**route, 'scope': 'personal', 'also_searched': [primary]},
+                                    lexical_query, selected_mode)
+        if named:
+            return second if second['hits'] else first
+        hits, seen = [], set()
+        for position in range(max(len(first['hits']), len(second['hits']))):
+            for result in (first, second):
+                if position < len(result['hits']) and result['hits'][position]['document_id'] not in seen:
+                    seen.add(result['hits'][position]['document_id'])
+                    hits.append(result['hits'][position])
+        hits = hits[:topk]
+        return {**first, 'hits': hits, 'modes': {primary: first['mode'], 'personal': second['mode']},
+                'answerability': 'unverified' if hits else 'no_evidence'}
+
+    def _search_scope(self, query, topk, route, lexical_query, selected_mode):
+        from mr_private_routing import named_source
+        scope = route['scope']
         chunks, index = self._index(scope)
         reference = named_source(query)
         referenced_ids = None
@@ -639,6 +697,11 @@ class PrivateRAG:
                     # Fuse the complete candidate union before truncation. Two
                     # weak votes must not displace an original literal phrase.
                     ranked = rrf_files(chunks, [bm, dense], topk=len(bm) + len(dense))
+                    # Two files ranked [0, 1] and [1, 0] fuse to the same score. The
+                    # question's own embedding settles that, not insertion order.
+                    closeness = {chunks[i]['document_id']: score for i, score in dense}
+                    ranked.sort(key=lambda row: (-round(row[1], 12),
+                                                 -closeness.get(chunks[row[0]]['document_id'], -1.0)))
                     if referenced_ids is not None and dense:
                         # File identity is fixed by the user's explicit reference;
                         # use semantics to pick its answer passage rather than
@@ -707,21 +770,37 @@ class PrivateRAG:
             from mr_private_facts import expand_query
             from mr_private_routing import named_source
             reference = named_source(query)
-            local = PrivateBM25(candidates)
-            ranked = local.search(expand_query(reference['query'] if reference else query), topk=max_passages)
+            question = reference['query'] if reference else query
+            # A question in one language about a document in another has no
+            # lexical match inside the file; the local vectors still rank its
+            # passages. Without them this is the previous keyword selection.
+            lexical = PrivateBM25(candidates).search(expand_query(question), topk=max_passages * 2)
+            semantic = self._document_passages(doc['scope'], canonical, candidates, question, max_passages * 2)
+            ranked = rrf([lexical, semantic], topk=max_passages * 2) if semantic else lexical
             positions = [i for i, _ in ranked] or [0]
             if expected_md5:
                 positions.insert(0, next(i for i, c in enumerate(candidates) if c['md5'] == expected_md5))
-            selected, pieces, used = [], [], 0
+            chosen, used = [], 0
+            def take(i):
+                nonlocal used
+                size = len(candidates[i]['heading']) + len(candidates[i]['text']) + 4
+                if i in chosen or used + size > max_chars:
+                    return False
+                chosen.append(i); used += size
+                return True
+            primary = []
             for i in dict.fromkeys(positions):
-                chunk = candidates[i]
-                piece = chunk['heading'] + '\n\n' + chunk['text']
-                if used + len(piece) > max_chars:
+                if len(primary) == max_passages or not take(i):
                     break
-                selected.append(chunk); pieces.append(piece); used += len(piece) + 2
-                if len(selected) == max_passages:
-                    break
-            context = '\n\n'.join(pieces)
+                primary.append(i)
+            # A value and its label are often split across a passage boundary.
+            for i in primary[:2]:
+                for neighbour in (i + 1, i - 1):
+                    if 0 <= neighbour < len(candidates) and len(chosen) < max_passages + 4:
+                        take(neighbour)
+            chosen.sort()
+            selected = [candidates[i] for i in chosen]
+            context = '\n\n'.join(c['heading'] + '\n\n' + c['text'] for c in selected)
         metadata = {k: doc.get(k) for k in ('file', 'scope', 'source_sha256', 'text_sha256',
                     'source_mtime_ns', 'source_updated_at', 'method', 'warnings', 'purpose')}
         issues = []
@@ -809,17 +888,18 @@ def load_private_rag(store, password, *, mode=None, use_index_cache=None):
         if not path.is_file():
             return None
         data = load_store(path, password)
-        if kind == 'lexical' and (data.get('chunk_signature') != chunk_signature(chunks) or data.get('tokenizer') != TOKENIZER):
+        if kind == 'lexical' and (data.get('chunk_signature') != chunk_signature(chunks) or data.get('tokenizer') != PRIVATE_TOKENIZER):
             return None
         return data
     def index_saver(scope, kind, chunks, data):
         if scope not in cache_scopes:
             return
         save_store(index_path(scope, kind), password,
-                   {**data, 'version': 1, 'chunk_signature': chunk_signature(chunks), 'tokenizer': TOKENIZER})
+                   {**data, 'version': 1, 'chunk_signature': chunk_signature(chunks), 'tokenizer': PRIVATE_TOKENIZER})
     # No settings means the previous BM25-only, no-cache API remains available.
     enabled = bool(settings.get('encrypted_index_cache')) if use_index_cache is None else bool(use_index_cache)
     return PrivateRAG(payload, loader, mode=selected_mode,
+                      auto_scope_chunk_limit=int(settings.get('auto_scope_chunk_limit', 200000)),
                       index_loader=index_loader if enabled else None,
                       index_saver=index_saver if enabled else None,
                       encoder_factory=(lambda: LocalEncoder(settings.get('model_directory'))) if selected_mode == 'hybrid' else None)
