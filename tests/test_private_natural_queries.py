@@ -17,7 +17,7 @@ from mr_index import tokenize as shared_tokenize
 from mr_private import PrivateRAG, load_private_rag, load_store, make_chunks, save_store
 from mr_private_eval import evaluate
 from mr_private_facts import compact_search, expand_query
-from mr_private_index import PRIVATE_TOKENIZER, PrivateBM25, fold, split_tokens, tokenize
+from mr_private_index import PRIVATE_TOKENIZER, PrivateBM25, fold, query_terms, split_tokens, tokenize
 from mr_private_policy import classify, load_policy, policy_signature
 from mr_private_semantic import LocalEncoder, PrivateVector, source_label
 
@@ -67,6 +67,24 @@ class PrivateTokenizerTests(unittest.TestCase):
         index = PrivateBM25(chunks)
         self.assertEqual(chunks[index.search('SYN-INS-4471-0092')[0][0]]['document_id'], 'exact')
         self.assertEqual({chunks[i]['document_id'] for i, _ in index.search('4471')}, {'exact', 'partial'})
+
+    def test_parts_of_a_compound_count_only_where_all_of_them_occur(self):
+        docs = [document('licence', 'Licence number: SYN-DL-88231-40117.\nExpiry date: 2029-08-14.'),
+                document('card', 'Card number: SYN-PRC-0041-7782.\nIssued 2029-01-30.'),
+                document('slash', 'Renewed on 14/08/2029 at the counter.')]
+        chunks = make_chunks(docs)
+        index = PrivateBM25(chunks)
+        found = lambda query: [chunks[i]['document_id'] for i, _ in index.search(query)]
+        self.assertEqual(found('88231-40117'), ['licence'])
+        # The same date written with other separators is still the same three parts.
+        self.assertEqual(found('2029-08-14'), ['licence', 'slash'])
+        # An identifier or date that is nowhere does not return records sharing a prefix or a year.
+        self.assertEqual(found('SYN-NOWHERE-999999'), [])
+        self.assertEqual(found('2029-12-25'), [])
+        self.assertEqual(set(found('SYN')), {'licence', 'card'})
+        self.assertEqual(query_terms('Due 2025-04-21, total 1,480.75'),
+                         (['due', '2025-04-21', 'total', '1', '480.75', '1480.75', '1480'],
+                          [(('2025', '04', '21'), ()), (('480', '75'), ('480', '75'))]))
 
     def test_plain_words_find_form_fields_years_in_file_names_and_partial_identifiers(self):
         docs = [document('t4-2023', 'Box 14 - Employment income: 118,950.00', file='tax\\Example T4 2023.txt'),
@@ -394,6 +412,20 @@ class PrivateNaturalFixtureTests(unittest.TestCase):
         self.assertEqual(summary['file_hits_at_k'], 24)
         self.assertEqual(summary['evidence_complete_at_k'], 24)
         self.assertEqual(summary['modes'], ['bm25'])
+
+    def test_consumed_holdout_keeps_its_recorded_keyword_result(self):
+        # Consumed once on 2026-10-11 (keywords: 13 -> 33 of 34 files). It is a known
+        # regression now; the one remaining keyword miss needs the local vectors.
+        fixture = json.loads((FIXTURES / 'private_natural_holdout.json').read_text(encoding='utf-8'))
+        documents = fixture['documents']
+        rag = PrivateRAG({'documents': documents, 'chunks': make_chunks(documents)})
+        try:
+            summary = evaluate(rag, fixture, repetitions=0)['summary']
+        finally:
+            rag.close()
+        self.assertEqual(summary['positive_questions'], 34)
+        self.assertGreaterEqual(summary['file_hits_at_k'], 33)
+        self.assertGreaterEqual(summary['evidence_complete_at_k'], 33)
 
 
 if __name__ == '__main__':

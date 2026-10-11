@@ -45,8 +45,13 @@ def split_tokens(text):
     its parts are returned separately as alternates: they are searchable but do
     not make a record full of dates and reference numbers count as longer.
     """
+    words, alternates, _compounds = _scan(text)
+    return words, alternates
+
+
+def _scan(text):
     text = fold(text)
-    words, alternates = [], []
+    words, alternates, compounds = [], [], []
     for raw in _ASCII.findall(text):
         if raw.isalnum():
             words.append(raw.lower())
@@ -57,16 +62,12 @@ def split_tokens(text):
         words.append(core)
         if core.isalnum():
             continue
-        parts = {core}
-        for piece in core.split('.'):
-            piece = piece.strip(_EDGE)
-            if len(piece) > 1 and piece not in parts:
-                parts.add(piece)
-                alternates.append(piece)
-        for atom in _SEPARATOR.split(core):
-            if len(atom) > 1 and atom not in parts:
-                parts.add(atom)
-                alternates.append(atom)
+        pieces = [piece for piece in (piece.strip(_EDGE) for piece in core.split('.'))
+                  if len(piece) > 1 and piece != core]
+        atoms = [atom for atom in _SEPARATOR.split(core) if len(atom) > 1]
+        alternates.extend(dict.fromkeys((*pieces, *atoms)))
+        if atoms:
+            compounds.append((tuple(dict.fromkeys(atoms)), tuple(dict.fromkeys(pieces))))
     if ',' in text:
         # `128,500.00` is otherwise only `128` and `500.00`.
         for match in _GROUPED_NUMBER.finditer(text):
@@ -76,12 +77,25 @@ def split_tokens(text):
                 alternates.append(joined.split('.')[0])
     for run in _CJK.findall(text):
         words.extend(_cjk_cut(run))
-    return words, alternates
+    return words, alternates, compounds
 
 
 def tokenize(text):
     words, alternates = split_tokens(text)
     return words + alternates
+
+
+def query_terms(text):
+    """Return (terms, compounds) for a question.
+
+    Terms match on their own. The parts of a compound count only in a passage
+    that holds all of them, so `88231-40117` finds `SYN-DL-88231-40117` while a
+    date or an identifier that is nowhere in the corpus does not return every
+    passage sharing one year or one prefix.
+    """
+    words, alternates, compounds = _scan(text)
+    grouped = {part for compound in compounds for parts in compound for part in parts}
+    return words + [token for token in alternates if token not in grouped], compounds
 
 
 class PrivateBM25:
@@ -133,19 +147,35 @@ class PrivateBM25:
 
     def search(self, query, topk=50, mask=None, group_by_document=False):
         scores = {}
-        for token, multiplicity in Counter(self.tokenize(query)).items():
+        def add(token, multiplicity, within=None):
             posting = self.postings.get(token)
             if not posting:
-                continue
+                return
             df = len(posting) // 2
             idf = math.log(1 + (self.N - df + .5) / (df + .5))
             for j in range(0, len(posting), 2):
                 i, frequency = posting[j], posting[j + 1]
-                if mask is not None and i not in mask:
+                if (mask is not None and i not in mask) or (within is not None and i not in within):
                     continue
                 value = idf * frequency * (self.K1 + 1) / (
                     frequency + self.K1 * (1 - self.B + self.B * self.lengths[i] / self.avgdl))
                 scores[i] = scores.get(i, 0.0) + multiplicity * value
+        if self.tokenize is tokenize:
+            terms, compounds = query_terms(query)
+            for (atoms, pieces), multiplicity in Counter(compounds).items():
+                postings = [self.postings.get(atom) for atom in atoms]
+                if not all(postings):
+                    continue
+                together = set(postings[0][::2])
+                for posting in postings[1:]:
+                    together.intersection_update(posting[::2])
+                if together:
+                    for token in dict.fromkeys((*atoms, *pieces)):
+                        add(token, multiplicity, together)
+        else:
+            terms = self.tokenize(query)
+        for token, multiplicity in Counter(terms).items():
+            add(token, multiplicity)
         if group_by_document:
             best = {}
             for i, score in scores.items():
