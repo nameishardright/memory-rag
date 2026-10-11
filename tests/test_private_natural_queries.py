@@ -14,7 +14,7 @@ from unittest.mock import patch
 import numpy as np
 
 from mr_index import tokenize as shared_tokenize
-from mr_private import PrivateRAG, load_private_rag, load_store, make_chunks, save_store
+from mr_private import PrivateRAG, index_cache_path, load_private_rag, load_store, make_chunks, save_store
 from mr_private_eval import evaluate
 from mr_private_facts import compact_search, expand_query
 from mr_private_index import PRIVATE_TOKENIZER, PrivateBM25, fold, query_terms, split_tokens, tokenize
@@ -84,7 +84,38 @@ class PrivateTokenizerTests(unittest.TestCase):
         self.assertEqual(set(found('SYN')), {'licence', 'card'})
         self.assertEqual(query_terms('Due 2025-04-21, total 1,480.75'),
                          (['due', '2025-04-21', 'total', '1', '480.75', '1480.75', '1480'],
-                          [(('2025', '04', '21'), ()), (('480', '75'), ('480', '75'))]))
+                          [(('2025', '04', '21'), ()), (('480', '75'), ())]))
+        self.assertEqual(query_terms('report-2025.txt')[1], [(('report', '2025', 'txt'), ('report-2025',))])
+
+    def test_compound_with_a_one_character_part_matches_only_as_a_whole(self):
+        # A one-character part is not indexed, so "all parts occur" cannot be
+        # checked; such a compound must not degrade to its remaining parts.
+        docs = [document('licence', 'Licence number: SYN-DL-88231-40117.\nExpiry date: 2029-08-14.'),
+                document('card', 'Card number: SYN-PRC-0041-7782.\nIssued 2029-01-30.'),
+                document('gpa', 'Cumulative GPA: 3.62.'), document('age', 'Retirement age 62.'),
+                document('short', 'Reference SYN-X-1 was issued on 2029-1-5 with ratio 4.62.')]
+        chunks = make_chunks(docs)
+        index = PrivateBM25(chunks)
+        found = lambda query: [chunks[i]['document_id'] for i, _ in index.search(query)]
+        for query in ('2029-1-6', 'SYN-Y-1', '4.63', '2029-3-14'):
+            self.assertEqual(found(query), [], query)
+            self.assertEqual(query_terms(query)[1], [], query)
+        for query in ('2029-1-5', 'SYN-X-1', '4.62'):
+            self.assertEqual(found(query), ['short'], query)
+        self.assertEqual(found('3.62'), ['gpa'])
+
+    def test_amount_followed_by_clause_punctuation_is_searchable_without_commas(self):
+        docs = [document('offer', 'Signing bonus: CAD 128,500, payable within 30 days.'),
+                document('rrsp', 'Contribution of 7,500, taxable in the year, and 15,000; see slip.'),
+                document('big', 'Coverage limit 1,234,567.')]
+        chunks = make_chunks(docs)
+        index = PrivateBM25(chunks)
+        found = lambda query: [chunks[i]['document_id'] for i, _ in index.search(query)]
+        self.assertEqual(found('128500'), ['offer'])
+        self.assertEqual(found('7500'), ['rrsp'])
+        self.assertEqual(found('15000'), ['rrsp'])
+        self.assertEqual(found('1234567'), ['big'])
+        self.assertEqual(found('234567'), [])
 
     def test_plain_words_find_form_fields_years_in_file_names_and_partial_identifiers(self):
         docs = [document('t4-2023', 'Box 14 - Employment income: 118,950.00', file='tax\\Example T4 2023.txt'),
@@ -113,7 +144,7 @@ class PrivateTokenizerTests(unittest.TestCase):
             rag = load_private_rag(store, 'synthetic-password')
             self.assertTrue(rag.search('salary')['hits'])
             rag.close()
-            cache = store.with_name('corpus.lexical.personal.enc')
+            cache = index_cache_path(store, 'personal', 'lexical')
             saved = load_store(cache, 'synthetic-password')
             self.assertEqual(saved['tokenizer'], PRIVATE_TOKENIZER)
             # A cache written by the previous tokenizer would have no `salary` posting.
@@ -125,6 +156,59 @@ class PrivateTokenizerTests(unittest.TestCase):
             finally:
                 rag.close()
             self.assertEqual(load_store(cache, 'synthetic-password')['tokenizer'], PRIVATE_TOKENIZER)
+
+
+class FakeEncoder:
+    """Plumbing only; ranking with the real model is covered by the verify scripts."""
+    signature = 'synthetic-encoder-v1'
+
+    def windows(self, chunk):
+        text = chunk['text']
+        return [{'key': hashlib.sha256((chunk['md5'] + text).encode()).hexdigest(),
+                 'start': 0, 'end': len(text), 'text': text}]
+
+    def encode(self, texts, query=False):
+        return np.asarray([[1.0, 0.0]] * len(texts), dtype='<f4')
+
+
+class PrivateIndexCacheTests(unittest.TestCase):
+    def test_index_caches_carry_a_generation_and_leave_earlier_ones_alone(self):
+        docs = [document('pay', 'Base salary: CAD 128,500.00 per year.')]
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / 'corpus.enc'
+            save_store(store, 'synthetic-password', {'version': 1, 'documents': docs, 'chunks': make_chunks(docs),
+                                                     'updated_at': '2026-01-01', 'coverage': {}})
+            (store.parent / 'retrieval-settings.json').write_text(json.dumps(
+                {'version': 1, 'mode': 'hybrid', 'encrypted_index_cache': True}), encoding='utf-8')
+            # Caches written by the code before this generation share the directory.
+            earlier = {store.with_name('corpus.' + kind + '.personal.enc'): b'cache of the earlier code: ' + kind.encode()
+                       for kind in ('lexical', 'semantic')}
+            for path, content in earlier.items():
+                path.write_bytes(content)
+            with patch('mr_private_semantic.LocalEncoder', side_effect=lambda directory=None: FakeEncoder()):
+                rag = load_private_rag(store, 'synthetic-password')
+                try:
+                    rag.prepare_semantic('personal')
+                    self.assertEqual(rag.search('salary')['mode'], 'hybrid')
+                finally:
+                    rag.close()
+            self.assertEqual(index_cache_path(store, 'personal', 'semantic').name, 'corpus.semantic2.personal.enc')
+            for kind in ('lexical', 'semantic'):
+                self.assertTrue(index_cache_path(store, 'personal', kind).is_file())
+            for path, content in earlier.items():
+                self.assertEqual(path.read_bytes(), content)
+
+    def test_partition_probe_uses_words_the_private_index_holds(self):
+        from mr_private_maintenance import partition_probe
+        docs = [document('technical:rule', '- - -\n--- ... ---', 'technical'),
+                document('technical:notes', '- - -\n\nScheduler design: storage layer.', 'technical')]
+        self.assertEqual(partition_probe(docs), 'scheduler design storage')
+        self.assertEqual(partition_probe(docs[:1]), '')
+        rag = PrivateRAG({'documents': docs, 'chunks': make_chunks(docs)})
+        try:
+            self.assertTrue(rag.search(partition_probe(docs), topk=3, scope='technical')['hits'])
+        finally:
+            rag.close()
 
 
 class PrivateGlossaryTests(unittest.TestCase):
@@ -226,6 +310,55 @@ class PrivateAutomaticScopeTests(unittest.TestCase):
         finally:
             small.close()
 
+    def test_ambiguous_or_routed_named_source_reports_what_was_actually_searched(self):
+        docs = [document('one', '# Salary\nSalary CAD 70000.', file='a/same.txt'),
+                document('two', '# Salary\nSalary CAD 80000.', file='b/same.txt'),
+                document('ticker', '# SYNQ options\nImplied volatility: 44%.', 'stock')]
+        rag = PrivateRAG({'documents': docs, 'chunks': make_chunks(docs)})
+        try:
+            # Routed to stock by the word 期权; the name exists twice in personal records.
+            ambiguous = rag.search('档案《same》里，期权有多少？', scope='auto')
+            self.assertEqual(ambiguous['hits'], [])
+            self.assertEqual(ambiguous['scope'], 'personal')
+            self.assertEqual(ambiguous['route']['source_reference'], 'ambiguous')
+            self.assertEqual(ambiguous['route']['source_reference_matches'], 2)
+            self.assertEqual(ambiguous['route']['also_searched'], ['stock'])
+            routed = rag.search('档案《ticker》里，期权隐含波动率是多少？', scope='auto')
+            self.assertEqual([hit['document_id'] for hit in routed['hits']], ['ticker'])
+            self.assertNotIn('also_searched', routed['route'])
+            missing = rag.search('档案《nowhere》里，期权有多少？', scope='auto')
+            self.assertEqual(missing['route']['source_reference'], 'missing')
+            self.assertEqual(missing['route']['also_searched'], ['personal'])
+        finally:
+            rag.close()
+
+    def test_file_only_the_keywords_found_stays_ahead_of_one_only_the_vectors_found(self):
+        # With more files than either leg returns, a keyword-only file and a
+        # vector-only file at the same rank fuse to the same score.
+        keyword = [document('kw-' + str(i), 'Harbor permit reference. ' + 'Permit renewal. ' * (4 - i)) for i in range(3)]
+        others = [document('nn-%02d' % i, 'Unrelated household note number ' + str(i) + '.') for i in range(60)]
+        docs = keyword + others
+        chunks = make_chunks(docs)
+        rag = PrivateRAG({'documents': docs, 'chunks': chunks}, mode='hybrid')
+        position = {chunk['document_id']: i for i, chunk in enumerate(chunks)}
+        class Vector:
+            ready = True
+            def search(self, *_args, **_kwargs):
+                return [(position['nn-%02d' % i], .9 - i / 100) for i in range(50)]
+            def passages(self, *_args, **_kwargs):
+                return []
+        try:
+            lexical = [chunks[i]['document_id'] for i, _ in
+                       rag._index('personal')[1].search('permit', group_by_document=True)]
+            self.assertEqual(sorted(lexical), ['kw-0', 'kw-1', 'kw-2'])
+            with patch.object(rag, '_vector', return_value=Vector()):
+                result = rag.search('permit')
+            self.assertEqual(result['mode'], 'hybrid')
+            self.assertEqual([hit['document_id'] for hit in result['hits']],
+                             [lexical[0], 'nn-00', lexical[1], 'nn-01', lexical[2]])
+        finally:
+            rag.close()
+
     def test_equal_fused_rank_is_settled_by_the_question_embedding(self):
         docs = [document('survey', '# Salary survey\nTypical salary and pay at Cedar Labs.'),
                 document('confirmation', '# Employment confirmation\nEmployer: Cedar Labs. Annual remuneration: CAD 84500.')]
@@ -275,16 +408,38 @@ class PrivateEvidenceSelectionTests(unittest.TestCase):
             def passages(self, query, document_id, topk):
                 assert document_id == 'agreement' and query == '公寓哪天交房？'
                 return [(target, .91)]
+            def close(self):
+                pass
         vector = Vector(); vector.chunks = chunks
         try:
-            with patch.object(rag, '_vector', return_value=vector):
-                result = rag.evidence('agreement', '公寓哪天交房？')
+            # Evidence only uses vectors that a search has already loaded.
+            self.assertNotIn('2025-06-27', rag.evidence('agreement', '公寓哪天交房？')['context'])
+            rag.vectors['personal'] = vector
+            result = rag.evidence('agreement', '公寓哪天交房？')
             self.assertIn('2025-06-27', result['context'])
             # The neighbouring passage comes along, and passages read in document order.
             self.assertIn('CAD 612,000', result['context'])
             identifiers = [passage['id'] for passage in result['passages']]
             self.assertEqual(identifiers, sorted(identifiers, key=lambda value: int(value.split(':')[-1])))
             self.assertLessEqual(len(result['context']), 12000)
+        finally:
+            rag.close()
+
+    def test_reading_evidence_never_builds_a_scope_index_or_loads_the_model(self):
+        doc = self.long_document()
+        note = document('technical:note', 'Scheduler design notes about the storage layer.', 'technical')
+        loaded = []
+        rag = PrivateRAG({'documents': [doc, note], 'chunks': make_chunks([doc, note])}, mode='hybrid',
+                         encoder_factory=lambda: loaded.append('encoder'))
+        try:
+            self.assertTrue(rag.evidence('agreement', 'agreed amount')['ok'])
+            self.assertTrue(rag.evidence('technical:note', 'storage layer')['ok'])
+            self.assertEqual(rag.indexes, {})
+            self.assertEqual(rag.vectors, {})
+            rag.search('agreed amount', scope='all')
+            rag.evidence('agreement', 'agreed amount')
+            self.assertEqual(set(rag.indexes), {'all'})
+            self.assertEqual(loaded, [])
         finally:
             rag.close()
 

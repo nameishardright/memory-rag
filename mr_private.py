@@ -35,6 +35,10 @@ STORE_MAGIC = b"MEMORYRAGPRIVATEv1\x00"
 JOURNALS = ("inventory.enc", "bulk.enc", "extraction.enc", "refined.enc", "core.enc",
             "narrative.enc", "media.enc", "onenote.enc")
 MAX_FRAME = 512 * 1024 * 1024
+# Part of every index sidecar name. Raise it together with the private tokenizer
+# or the encoder version: two code versions sharing one store then keep their
+# own caches instead of rebuilding or invalidating each other's.
+INDEX_CACHE_GENERATION = 2
 PERSONAL_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf",
     ".txt", ".md", ".csv", ".html", ".htm", ".json", ".ini", ".config",
@@ -569,14 +573,15 @@ class PrivateRAG:
             return None
 
     def _document_passages(self, scope, document_id, candidates, query, topk):
-        """Dense ranking of one document's passages; empty unless a ready local index exists."""
-        if self.mode != 'hybrid' or scope not in SCOPES or not query.strip():
+        """Dense ranking of one document's passages, from vectors a search already loaded.
+
+        Reading evidence never builds a scope index or opens a vector cache;
+        without loaded vectors the caller keeps the keyword selection.
+        """
+        vector = self.vectors.get(scope)
+        if self.mode != 'hybrid' or vector is None or not vector.ready or not query.strip():
             return []
         try:
-            chunks, _index = self._index(scope)
-            vector = self._vector(scope, chunks)
-            if vector is None or not vector.ready:
-                return []
             position = {chunk['id']: i for i, chunk in enumerate(candidates)}
             return [(position[vector.chunks[i]['id']], score)
                     for i, score in vector.passages(query, document_id, topk)
@@ -627,14 +632,19 @@ class PrivateRAG:
         if self._deferred(primary):
             return self._search_scope(query, topk, {**route, 'scope': 'personal', 'deferred_scope': primary},
                                       lexical_query, selected_mode)
+        personal_route = {**route, 'scope': 'personal', 'also_searched': [primary]}
+        if named_source(query) is not None:
+            # An explicit reference names one record: answer from the scope that
+            # holds it, and report personal as searched only when it was.
+            first = self._search_scope(query, topk, route, lexical_query, selected_mode)
+            if first['hits']:
+                return first
+            second = self._search_scope(query, topk, personal_route, lexical_query, selected_mode)
+            if second['hits'] or second['route'].get('source_reference') == 'ambiguous':
+                return second
+            return {**first, 'route': {**first['route'], 'also_searched': ['personal']}}
         first = self._search_scope(query, topk, {**route, 'also_searched': ['personal']}, lexical_query, selected_mode)
-        named = named_source(query) is not None
-        if named and first['hits']:
-            return first
-        second = self._search_scope(query, topk, {**route, 'scope': 'personal', 'also_searched': [primary]},
-                                    lexical_query, selected_mode)
-        if named:
-            return second if second['hits'] else first
+        second = self._search_scope(query, topk, personal_route, lexical_query, selected_mode)
         hits, seen = [], set()
         for position in range(max(len(first['hits']), len(second['hits']))):
             for result in (first, second):
@@ -698,10 +708,12 @@ class PrivateRAG:
                     # weak votes must not displace an original literal phrase.
                     ranked = rrf_files(chunks, [bm, dense], topk=len(bm) + len(dense))
                     # Two files ranked [0, 1] and [1, 0] fuse to the same score. The
-                    # question's own embedding settles that, not insertion order.
+                    # question's own embedding settles that, not insertion order. A
+                    # file only the keywords found keeps its place ahead of a file
+                    # only the vectors found at the same rank.
                     closeness = {chunks[i]['document_id']: score for i, score in dense}
                     ranked.sort(key=lambda row: (-round(row[1], 12),
-                                                 -closeness.get(chunks[row[0]]['document_id'], -1.0)))
+                                                 -closeness.get(chunks[row[0]]['document_id'], float('inf'))))
                     if referenced_ids is not None and dense:
                         # File identity is fixed by the user's explicit reference;
                         # use semantics to pick its answer passage rather than
@@ -856,6 +868,11 @@ class PrivateRAG:
         self.encoder = None
 
 
+def index_cache_path(store, scope, kind):
+    store = Path(store)
+    return store.with_name(store.stem + '.' + kind + str(INDEX_CACHE_GENERATION) + '.' + scope + '.enc')
+
+
 def load_private_rag(store, password, *, mode=None, use_index_cache=None):
     store = Path(store)
     payload = load_store(store, password)
@@ -877,7 +894,7 @@ def load_private_rag(store, password, *, mode=None, use_index_cache=None):
     settings = json.loads(settings_path.read_text(encoding='utf-8-sig')) if settings_path.is_file() else {}
     selected_mode = mode or settings.get('mode', 'bm25')
     def index_path(scope, kind):
-        return store.with_name(store.stem + '.' + kind + '.' + scope + '.enc')
+        return index_cache_path(store, scope, kind)
     cache_scopes = settings.get('cache_scopes', ['personal', 'technical', 'history'])
     def index_loader(scope, kind, chunks):
         if kind == 'semantic_path':

@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from mr_index import BM25
-from mr_private import default_store, load_private_rag, load_store
+from mr_private import default_store, index_cache_path, load_private_rag, load_store
 from mr_private_facts import CARD_INTENT, compact_search, extract_cards
 
 
@@ -127,7 +127,7 @@ class PrivateMemoryApp:
     def signature(self):
         stat = self.store.stat()
         parts = [(stat.st_size, stat.st_mtime_ns)]
-        for path in (self.store.with_name(self.store.stem + '.semantic.personal.enc'),
+        for path in (index_cache_path(self.store, 'personal', 'semantic'),
                      self.store.parent / 'retrieval-settings.json'):
             try:
                 extra = path.stat(); parts.append((extra.st_size, extra.st_mtime_ns))

@@ -101,6 +101,20 @@ def stop_legacy_watcher(store):
     if marker.exists(): marker.unlink()
 
 
+def partition_probe(documents):
+    """Three words the private index holds, from the first document that has any.
+
+    They come from the tokenizer that built the index: the shared one keeps
+    punctuation-only tokens (`- - -`) that the private index does not contain.
+    """
+    from mr_private_index import split_tokens
+    for document in documents:
+        words = split_tokens(document['text'][:4000])[0][:3]
+        if words:
+            return ' '.join(words)
+    return ''
+
+
 def verify_live(store, password):
     started = time.perf_counter()
     rag = load_private_rag(store, password)
@@ -171,8 +185,7 @@ def verify_live(store, password):
         rag.ensure_scope(scope)
         docs = [d for d in rag.documents.values() if d['scope'] == scope]
         invalid = sum(classify(d['file'], text=d['text'])['scope'] != scope for d in docs)
-        from mr_index import tokenize
-        probe = next((' '.join(tokenize(d['text'][:4000])[:3]) for d in docs if tokenize(d['text'][:4000])[:3]), '')
+        probe = partition_probe(docs)
         result = rag.search(probe, topk=3, scope=scope) if probe else {'hits': []}
         scope_checks.append({'scope': scope, 'documents': len(docs), 'chunks': metadata['chunks'],
                              'policy_violations': invalid, 'probe_hits': len(result['hits']),

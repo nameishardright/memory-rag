@@ -14,7 +14,8 @@ PRIVATE_TOKENIZER = TOKENIZER + '+form-v1'
 
 _EDGE = './:-'
 _SEPARATOR = re.compile(r'[./:\-_]+')
-_GROUPED_NUMBER = re.compile(r'(?<![\d.,])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d,])')
+# A comma that only ends a clause (`CAD 128,500, payable`) does not continue the number.
+_GROUPED_NUMBER = re.compile(r'(?<![\d.])(?<!\d,)\d{1,3}(?:,\d{3})+(?:\.\d+)?(?!\d|,\d)')
 _LATIN_EXTENDED = re.compile('[À-ɏḀ-ỿ]')
 _COMBINING = re.compile('(?<=[A-Za-z])[̀-ͯ]+')
 _FULLWIDTH = {code: code - 0xFEE0 for code in range(0xFF01, 0xFF5F)}
@@ -49,7 +50,7 @@ def split_tokens(text):
     return words, alternates
 
 
-def _scan(text):
+def _scan(text, question=False):
     text = fold(text)
     words, alternates, compounds = [], [], []
     for raw in _ASCII.findall(text):
@@ -64,10 +65,15 @@ def _scan(text):
             continue
         pieces = [piece for piece in (piece.strip(_EDGE) for piece in core.split('.'))
                   if len(piece) > 1 and piece != core]
-        atoms = [atom for atom in _SEPARATOR.split(core) if len(atom) > 1]
-        alternates.extend(dict.fromkeys((*pieces, *atoms)))
-        if atoms:
-            compounds.append((tuple(dict.fromkeys(atoms)), tuple(dict.fromkeys(pieces))))
+        atoms = [atom for atom in _SEPARATOR.split(core) if atom]
+        parts = list(dict.fromkeys(atom for atom in atoms if len(atom) > 1))
+        if not question:
+            alternates.extend(dict.fromkeys((*pieces, *parts)))
+        elif parts and all(len(atom) > 1 for atom in atoms):
+            # One-character parts are not indexed, so a compound that has one
+            # (`2029-1-5`, `4.62`) cannot be checked part by part and is
+            # matched only as a whole.
+            compounds.append((tuple(parts), tuple(dict.fromkeys(p for p in pieces if p not in parts))))
     if ',' in text:
         # `128,500.00` is otherwise only `128` and `500.00`.
         for match in _GROUPED_NUMBER.finditer(text):
@@ -93,9 +99,8 @@ def query_terms(text):
     date or an identifier that is nowhere in the corpus does not return every
     passage sharing one year or one prefix.
     """
-    words, alternates, compounds = _scan(text)
-    grouped = {part for compound in compounds for parts in compound for part in parts}
-    return words + [token for token in alternates if token not in grouped], compounds
+    words, alternates, compounds = _scan(text, question=True)
+    return words + alternates, compounds
 
 
 class PrivateBM25:
