@@ -1,0 +1,449 @@
+{
+ "version": 1,
+ "boundary": "Fictional agent-authored fixtures; the same author wrote the retrieval changes. Not real private accuracy, not independent human questions, no answer or refusal accuracy.",
+ "baseline_commit": "2bb85d1",
+ "holdout": {
+  "fixture": "tests/fixtures/private_natural_holdout.json",
+  "candidate_commit": "8bd740b",
+  "consumed_once": true,
+  "labels_sha256": "fb21abb3a546e7c4161e9ec9aac9b0eec236af6b2e4748f969aa4abe23fdb024",
+  "documents": 45,
+  "modes": {
+   "bm25": {
+    "before": {
+     "positive_questions": 34,
+     "file_hits_at_k": 13,
+     "evidence_complete_at_k": 13,
+     "preview_complete_at_k": 11,
+     "mrr": 0.333333,
+     "negative_questions": 6,
+     "negative_related_candidates": 5,
+     "modes": [
+      "bm25"
+     ],
+     "warm_p95_seconds": 0.0054
+    },
+    "after": {
+     "positive_questions": 34,
+     "file_hits_at_k": 33,
+     "evidence_complete_at_k": 33,
+     "preview_complete_at_k": 30,
+     "mrr": 0.852941,
+     "negative_questions": 6,
+     "negative_related_candidates": 6,
+     "modes": [
+      "bm25"
+     ],
+     "warm_p95_seconds": 0.0094
+    },
+    "file_gains": 20,
+    "file_regressions": 0,
+    "evidence_gains": 20,
+    "evidence_regressions": 0,
+    "rank_worse": [],
+    "still_missing_file": [
+     "hq-network-zh"
+    ],
+    "still_missing_evidence": [
+     "hq-network-zh"
+    ],
+    "negatives_with_candidates": {
+     "before": 5,
+     "after": 6
+    }
+   },
+   "hybrid": {
+    "before": {
+     "positive_questions": 34,
+     "file_hits_at_k": 24,
+     "evidence_complete_at_k": 24,
+     "preview_complete_at_k": 21,
+     "mrr": 0.396569,
+     "negative_questions": 6,
+     "negative_related_candidates": 6,
+     "modes": [
+      "hybrid"
+     ],
+     "warm_p95_seconds": 0.0173
+    },
+    "after": {
+     "positive_questions": 34,
+     "file_hits_at_k": 34,
+     "evidence_complete_at_k": 34,
+     "preview_complete_at_k": 31,
+     "mrr": 0.701961,
+     "negative_questions": 6,
+     "negative_related_candidates": 6,
+     "modes": [
+      "hybrid"
+     ],
+     "warm_p95_seconds": 0.0137
+    },
+    "file_gains": 10,
+    "file_regressions": 0,
+    "evidence_gains": 10,
+    "evidence_regressions": 0,
+    "rank_worse": [],
+    "still_missing_file": [],
+    "still_missing_evidence": [],
+    "negatives_with_candidates": {
+     "before": 6,
+     "after": 6
+    }
+   }
+  }
+ },
+ "after_holdout": {
+  "note": "Query-side compound matching was tightened after the holdout run. Every fixture, including the consumed holdout as a known regression, was re-run on that code.",
+  "datasets": {
+   "private_natural_dev.json": {
+    "evaluation_role": "development",
+    "labels_sha256": "3876db86c7653a61c4a129242e76dc224508cee9f7fe73c896463cd9a144a6f4",
+    "documents": 52,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 24,
+       "file_hits_at_k": 8,
+       "evidence_complete_at_k": 8,
+       "preview_complete_at_k": 7,
+       "mrr": 0.291667,
+       "negative_questions": 4,
+       "negative_related_candidates": 2,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0056
+      },
+      "after": {
+       "positive_questions": 24,
+       "file_hits_at_k": 24,
+       "evidence_complete_at_k": 24,
+       "preview_complete_at_k": 21,
+       "mrr": 0.930556,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.01
+      },
+      "file_gains": 16,
+      "file_regressions": 0,
+      "evidence_gains": 16,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 2,
+       "after": 3
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 24,
+       "file_hits_at_k": 18,
+       "evidence_complete_at_k": 17,
+       "preview_complete_at_k": 15,
+       "mrr": 0.486111,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0205
+      },
+      "after": {
+       "positive_questions": 24,
+       "file_hits_at_k": 24,
+       "evidence_complete_at_k": 24,
+       "preview_complete_at_k": 21,
+       "mrr": 0.854167,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0138
+      },
+      "file_gains": 6,
+      "file_regressions": 0,
+      "evidence_gains": 7,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     }
+    }
+   },
+   "private_retrieval_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "3842fefbf1dce9ec4c4941f29233d0aff4aac770d3b0d7d7689ff117973a4815",
+    "documents": 14,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 14,
+       "file_hits_at_k": 9,
+       "evidence_complete_at_k": 9,
+       "preview_complete_at_k": 8,
+       "mrr": 0.642857,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0005
+      },
+      "after": {
+       "positive_questions": 14,
+       "file_hits_at_k": 14,
+       "evidence_complete_at_k": 14,
+       "preview_complete_at_k": 13,
+       "mrr": 0.964286,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0017
+      },
+      "file_gains": 5,
+      "file_regressions": 0,
+      "evidence_gains": 5,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 3,
+       "after": 3
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 14,
+       "file_hits_at_k": 14,
+       "evidence_complete_at_k": 14,
+       "preview_complete_at_k": 13,
+       "mrr": 1.0,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0113
+      },
+      "after": {
+       "positive_questions": 14,
+       "file_hits_at_k": 14,
+       "evidence_complete_at_k": 14,
+       "preview_complete_at_k": 13,
+       "mrr": 1.0,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0025
+      },
+      "file_gains": 0,
+      "file_regressions": 0,
+      "evidence_gains": 0,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     }
+    }
+   },
+   "private_ranking_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "b895eb547af6b76f547f64040ba1269205a42e5fd49626341bd6a0edd2462e0a",
+    "documents": 76,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 12,
+       "file_hits_at_k": 9,
+       "evidence_complete_at_k": 9,
+       "preview_complete_at_k": 9,
+       "mrr": 0.75,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0009
+      },
+      "after": {
+       "positive_questions": 12,
+       "file_hits_at_k": 11,
+       "evidence_complete_at_k": 11,
+       "preview_complete_at_k": 11,
+       "mrr": 0.916667,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0024
+      },
+      "file_gains": 2,
+      "file_regressions": 0,
+      "evidence_gains": 2,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "ranking-holdout-volunteer-meaning"
+      ],
+      "still_missing_evidence": [
+       "ranking-holdout-volunteer-meaning"
+      ],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 12,
+       "file_hits_at_k": 12,
+       "evidence_complete_at_k": 12,
+       "preview_complete_at_k": 12,
+       "mrr": 1.0,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0212
+      },
+      "after": {
+       "positive_questions": 12,
+       "file_hits_at_k": 12,
+       "evidence_complete_at_k": 12,
+       "preview_complete_at_k": 12,
+       "mrr": 1.0,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0034
+      },
+      "file_gains": 0,
+      "file_regressions": 0,
+      "evidence_gains": 0,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     }
+    }
+   },
+   "private_natural_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "fb21abb3a546e7c4161e9ec9aac9b0eec236af6b2e4748f969aa4abe23fdb024",
+    "documents": 45,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 34,
+       "file_hits_at_k": 13,
+       "evidence_complete_at_k": 13,
+       "preview_complete_at_k": 11,
+       "mrr": 0.333333,
+       "negative_questions": 6,
+       "negative_related_candidates": 5,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0053
+      },
+      "after": {
+       "positive_questions": 34,
+       "file_hits_at_k": 33,
+       "evidence_complete_at_k": 33,
+       "preview_complete_at_k": 30,
+       "mrr": 0.852941,
+       "negative_questions": 6,
+       "negative_related_candidates": 5,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0105
+      },
+      "file_gains": 20,
+      "file_regressions": 0,
+      "evidence_gains": 20,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "hq-network-zh"
+      ],
+      "still_missing_evidence": [
+       "hq-network-zh"
+      ],
+      "negatives_with_candidates": {
+       "before": 5,
+       "after": 5
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 34,
+       "file_hits_at_k": 24,
+       "evidence_complete_at_k": 24,
+       "preview_complete_at_k": 21,
+       "mrr": 0.396569,
+       "negative_questions": 6,
+       "negative_related_candidates": 6,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.022
+      },
+      "after": {
+       "positive_questions": 34,
+       "file_hits_at_k": 34,
+       "evidence_complete_at_k": 34,
+       "preview_complete_at_k": 31,
+       "mrr": 0.701961,
+       "negative_questions": 6,
+       "negative_related_candidates": 6,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0168
+      },
+      "file_gains": 10,
+      "file_regressions": 0,
+      "evidence_gains": 10,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 6,
+       "after": 6
+      }
+     }
+    }
+   }
+  }
+ }
+}
