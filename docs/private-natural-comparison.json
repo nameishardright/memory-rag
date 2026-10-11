@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "boundary": "Fictional agent-authored fixtures; the same author wrote the retrieval changes. Not real private accuracy, not independent human questions, no answer or refusal accuracy.",
  "baseline_commit": "2bb85d1",
  "holdout": {
@@ -35,6 +35,10 @@
       "bm25"
      ],
      "warm_p95_seconds": 0.0094
+    },
+    "top1": {
+     "before": 10,
+     "after": 26
     },
     "file_gains": 20,
     "file_regressions": 0,
@@ -79,6 +83,10 @@
      ],
      "warm_p95_seconds": 0.0137
     },
+    "top1": {
+     "before": 8,
+     "after": 16
+    },
     "file_gains": 10,
     "file_regressions": 0,
     "evidence_gains": 10,
@@ -93,13 +101,14 @@
    }
   }
  },
- "after_holdout": {
-  "note": "Query-side compound matching was tightened after the holdout run. Every fixture, including the consumed holdout as a known regression, was re-run on that code.",
+ "final_code": {
+  "note": "After the holdout run: compound parts must co-occur, and the fixes from an independent review (tie-break, one-character parts, evidence without index building, cache generation, named sources under automatic scope, amounts before a comma, partition probe). Every fixture, the consumed holdout included, re-run as a known regression.",
   "datasets": {
    "private_natural_dev.json": {
-    "evaluation_role": "development",
+    "evaluation_role": "known_regression",
     "labels_sha256": "3876db86c7653a61c4a129242e76dc224508cee9f7fe73c896463cd9a144a6f4",
     "documents": 52,
+    "padding_documents": 0,
     "modes": {
      "bm25": {
       "before": {
@@ -113,7 +122,7 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0056
+       "warm_p95_seconds": 0.0054
       },
       "after": {
        "positive_questions": 24,
@@ -126,7 +135,11 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.01
+       "warm_p95_seconds": 0.0102
+      },
+      "top1": {
+       "before": 6,
+       "after": 21
       },
       "file_gains": 16,
       "file_regressions": 0,
@@ -152,7 +165,7 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0205
+       "warm_p95_seconds": 0.0188
       },
       "after": {
        "positive_questions": 24,
@@ -165,7 +178,11 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0138
+       "warm_p95_seconds": 0.0128
+      },
+      "top1": {
+       "before": 9,
+       "after": 17
       },
       "file_gains": 6,
       "file_regressions": 0,
@@ -185,6 +202,7 @@
     "evaluation_role": "known_regression",
     "labels_sha256": "3842fefbf1dce9ec4c4941f29233d0aff4aac770d3b0d7d7689ff117973a4815",
     "documents": 14,
+    "padding_documents": 0,
     "modes": {
      "bm25": {
       "before": {
@@ -198,7 +216,7 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0005
+       "warm_p95_seconds": 0.0006
       },
       "after": {
        "positive_questions": 14,
@@ -211,7 +229,11 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0017
+       "warm_p95_seconds": 0.0016
+      },
+      "top1": {
+       "before": 9,
+       "after": 13
       },
       "file_gains": 5,
       "file_regressions": 0,
@@ -237,7 +259,7 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0113
+       "warm_p95_seconds": 0.0168
       },
       "after": {
        "positive_questions": 14,
@@ -250,7 +272,11 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0025
+       "warm_p95_seconds": 0.0029
+      },
+      "top1": {
+       "before": 14,
+       "after": 14
       },
       "file_gains": 0,
       "file_regressions": 0,
@@ -270,6 +296,7 @@
     "evaluation_role": "known_regression",
     "labels_sha256": "b895eb547af6b76f547f64040ba1269205a42e5fd49626341bd6a0edd2462e0a",
     "documents": 76,
+    "padding_documents": 0,
     "modes": {
      "bm25": {
       "before": {
@@ -296,7 +323,11 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0024
+       "warm_p95_seconds": 0.0023
+      },
+      "top1": {
+       "before": 9,
+       "after": 11
       },
       "file_gains": 2,
       "file_regressions": 0,
@@ -326,7 +357,7 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0212
+       "warm_p95_seconds": 0.0183
       },
       "after": {
        "positive_questions": 12,
@@ -339,7 +370,11 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0034
+       "warm_p95_seconds": 0.0036
+      },
+      "top1": {
+       "before": 12,
+       "after": 12
       },
       "file_gains": 0,
       "file_regressions": 0,
@@ -359,6 +394,7 @@
     "evaluation_role": "known_regression",
     "labels_sha256": "fb21abb3a546e7c4161e9ec9aac9b0eec236af6b2e4748f969aa4abe23fdb024",
     "documents": 45,
+    "padding_documents": 0,
     "modes": {
      "bm25": {
       "before": {
@@ -372,7 +408,7 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0053
+       "warm_p95_seconds": 0.0052
       },
       "after": {
        "positive_questions": 34,
@@ -385,7 +421,11 @@
        "modes": [
         "bm25"
        ],
-       "warm_p95_seconds": 0.0105
+       "warm_p95_seconds": 0.01
+      },
+      "top1": {
+       "before": 10,
+       "after": 26
       },
       "file_gains": 20,
       "file_regressions": 0,
@@ -415,7 +455,7 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.022
+       "warm_p95_seconds": 0.0186
       },
       "after": {
        "positive_questions": 34,
@@ -428,7 +468,11 @@
        "modes": [
         "hybrid"
        ],
-       "warm_p95_seconds": 0.0168
+       "warm_p95_seconds": 0.0177
+      },
+      "top1": {
+       "before": 8,
+       "after": 16
       },
       "file_gains": 10,
       "file_regressions": 0,
@@ -440,6 +484,415 @@
       "negatives_with_candidates": {
        "before": 6,
        "after": 6
+      }
+     }
+    }
+   }
+  }
+ },
+ "final_code_with_600_filler_records": {
+  "note": "Same questions with 600 generated fictional filler records in the personal scope (scripts/compare_private_versions.py --pad 600), because fusion behaves differently when a scope holds more files than either leg returns. Diagnostic re-runs, not fresh holdouts.",
+  "datasets": {
+   "private_natural_dev.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "65014a14334a2ce5037040cfd7f6aaa1de2932faa5a99d267f50dcdf128b059c",
+    "documents": 652,
+    "padding_documents": 600,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 24,
+       "file_hits_at_k": 7,
+       "evidence_complete_at_k": 7,
+       "preview_complete_at_k": 6,
+       "mrr": 0.270833,
+       "negative_questions": 4,
+       "negative_related_candidates": 2,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0062
+      },
+      "after": {
+       "positive_questions": 24,
+       "file_hits_at_k": 24,
+       "evidence_complete_at_k": 24,
+       "preview_complete_at_k": 21,
+       "mrr": 0.895833,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.011
+      },
+      "top1": {
+       "before": 6,
+       "after": 19
+      },
+      "file_gains": 17,
+      "file_regressions": 0,
+      "evidence_gains": 17,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 2,
+       "after": 3
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 24,
+       "file_hits_at_k": 10,
+       "evidence_complete_at_k": 10,
+       "preview_complete_at_k": 9,
+       "mrr": 0.340278,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0195
+      },
+      "after": {
+       "positive_questions": 24,
+       "file_hits_at_k": 24,
+       "evidence_complete_at_k": 24,
+       "preview_complete_at_k": 21,
+       "mrr": 0.75,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0163
+      },
+      "top1": {
+       "before": 7,
+       "after": 14
+      },
+      "file_gains": 14,
+      "file_regressions": 0,
+      "evidence_gains": 14,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     }
+    }
+   },
+   "private_natural_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "27367422e4239043cd82707e1f6535c907f7c42367b485f63acba62defa8cd97",
+    "documents": 645,
+    "padding_documents": 600,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 34,
+       "file_hits_at_k": 12,
+       "evidence_complete_at_k": 12,
+       "preview_complete_at_k": 10,
+       "mrr": 0.323529,
+       "negative_questions": 6,
+       "negative_related_candidates": 5,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0055
+      },
+      "after": {
+       "positive_questions": 34,
+       "file_hits_at_k": 32,
+       "evidence_complete_at_k": 32,
+       "preview_complete_at_k": 29,
+       "mrr": 0.823529,
+       "negative_questions": 6,
+       "negative_related_candidates": 5,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0101
+      },
+      "top1": {
+       "before": 10,
+       "after": 25
+      },
+      "file_gains": 20,
+      "file_regressions": 0,
+      "evidence_gains": 20,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "hq-lease-deposit-en",
+       "hq-network-zh"
+      ],
+      "still_missing_evidence": [
+       "hq-lease-deposit-en",
+       "hq-network-zh"
+      ],
+      "negatives_with_candidates": {
+       "before": 5,
+       "after": 5
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 34,
+       "file_hits_at_k": 13,
+       "evidence_complete_at_k": 13,
+       "preview_complete_at_k": 12,
+       "mrr": 0.289216,
+       "negative_questions": 6,
+       "negative_related_candidates": 6,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0182
+      },
+      "after": {
+       "positive_questions": 34,
+       "file_hits_at_k": 31,
+       "evidence_complete_at_k": 31,
+       "preview_complete_at_k": 28,
+       "mrr": 0.652941,
+       "negative_questions": 6,
+       "negative_related_candidates": 6,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0172
+      },
+      "top1": {
+       "before": 7,
+       "after": 16
+      },
+      "file_gains": 18,
+      "file_regressions": 0,
+      "evidence_gains": 18,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "hq-lease-deposit-en",
+       "hq-network-zh",
+       "hq-pnp-program-zh"
+      ],
+      "still_missing_evidence": [
+       "hq-lease-deposit-en",
+       "hq-network-zh",
+       "hq-pnp-program-zh"
+      ],
+      "negatives_with_candidates": {
+       "before": 6,
+       "after": 6
+      }
+     }
+    }
+   },
+   "private_retrieval_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "3f93613a2583882a5d6c30877af6300a1da55bb9d87bad5b829c04e0851051e1",
+    "documents": 614,
+    "padding_documents": 600,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 14,
+       "file_hits_at_k": 9,
+       "evidence_complete_at_k": 9,
+       "preview_complete_at_k": 8,
+       "mrr": 0.642857,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0012
+      },
+      "after": {
+       "positive_questions": 14,
+       "file_hits_at_k": 14,
+       "evidence_complete_at_k": 14,
+       "preview_complete_at_k": 13,
+       "mrr": 0.964286,
+       "negative_questions": 4,
+       "negative_related_candidates": 3,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0024
+      },
+      "top1": {
+       "before": 9,
+       "after": 13
+      },
+      "file_gains": 5,
+      "file_regressions": 0,
+      "evidence_gains": 5,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 3,
+       "after": 3
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 14,
+       "file_hits_at_k": 10,
+       "evidence_complete_at_k": 10,
+       "preview_complete_at_k": 9,
+       "mrr": 0.678571,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0195
+      },
+      "after": {
+       "positive_questions": 14,
+       "file_hits_at_k": 14,
+       "evidence_complete_at_k": 14,
+       "preview_complete_at_k": 13,
+       "mrr": 0.952381,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0045
+      },
+      "top1": {
+       "before": 9,
+       "after": 13
+      },
+      "file_gains": 4,
+      "file_regressions": 0,
+      "evidence_gains": 4,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [],
+      "still_missing_evidence": [],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     }
+    }
+   },
+   "private_ranking_holdout.json": {
+    "evaluation_role": "known_regression",
+    "labels_sha256": "2f7f6751d6e9d4302c86006b067d413d9fc9d15e731de4dffb1703c3af09b646",
+    "documents": 676,
+    "padding_documents": 600,
+    "modes": {
+     "bm25": {
+      "before": {
+       "positive_questions": 12,
+       "file_hits_at_k": 7,
+       "evidence_complete_at_k": 7,
+       "preview_complete_at_k": 7,
+       "mrr": 0.583333,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0014
+      },
+      "after": {
+       "positive_questions": 12,
+       "file_hits_at_k": 9,
+       "evidence_complete_at_k": 9,
+       "preview_complete_at_k": 9,
+       "mrr": 0.75,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "bm25"
+       ],
+       "warm_p95_seconds": 0.0028
+      },
+      "top1": {
+       "before": 7,
+       "after": 9
+      },
+      "file_gains": 2,
+      "file_regressions": 0,
+      "evidence_gains": 2,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "ranking-holdout-car-meaning",
+       "ranking-holdout-volunteer-meaning",
+       "ranking-holdout-water-meaning"
+      ],
+      "still_missing_evidence": [
+       "ranking-holdout-car-meaning",
+       "ranking-holdout-volunteer-meaning",
+       "ranking-holdout-water-meaning"
+      ],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
+      }
+     },
+     "hybrid": {
+      "before": {
+       "positive_questions": 12,
+       "file_hits_at_k": 8,
+       "evidence_complete_at_k": 8,
+       "preview_complete_at_k": 8,
+       "mrr": 0.6,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.0206
+      },
+      "after": {
+       "positive_questions": 12,
+       "file_hits_at_k": 10,
+       "evidence_complete_at_k": 10,
+       "preview_complete_at_k": 10,
+       "mrr": 0.766667,
+       "negative_questions": 4,
+       "negative_related_candidates": 4,
+       "modes": [
+        "hybrid"
+       ],
+       "warm_p95_seconds": 0.007
+      },
+      "top1": {
+       "before": 7,
+       "after": 9
+      },
+      "file_gains": 2,
+      "file_regressions": 0,
+      "evidence_gains": 2,
+      "evidence_regressions": 0,
+      "rank_worse": [],
+      "still_missing_file": [
+       "ranking-holdout-volunteer-meaning",
+       "ranking-holdout-water-meaning"
+      ],
+      "still_missing_evidence": [
+       "ranking-holdout-volunteer-meaning",
+       "ranking-holdout-water-meaning"
+      ],
+      "negatives_with_candidates": {
+       "before": 4,
+       "after": 4
       }
      }
     }
