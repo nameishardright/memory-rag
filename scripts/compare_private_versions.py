@@ -135,6 +135,8 @@ def main():
         for mode in modes:
             before = run_worker(baseline, path.resolve(), mode, args.repetitions)
             after = run_worker(candidate, path.resolve(), mode, args.repetitions)
+            # Canonical label hash: unlike the file hash it does not depend on line endings.
+            dataset['labels_sha256'] = after['summary']['labels_sha256']
             dataset['modes'][mode] = {'before': headline(before['summary']), 'after': headline(after['summary']),
                                       'changes': compare(before, after),
                                       'questions': {'before': before['questions'], 'after': after['questions']}}
