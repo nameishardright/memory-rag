@@ -1,6 +1,19 @@
 # OneDrive 私有 RAG 变更记录
 
-最近更新：2026-10-11（未部署的后续分支，见下一节）；首次记录：2026-10-03。交付分支：[`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+最近更新：2026-10-14（未部署的后续分支，见下两节）；首次记录：2026-10-03。交付分支：[`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+
+## 2026-10-14：AI 备份新增目录的归类（尚未部署，同一分支）
+
+AI 备份 10-14 起多了 agent 的对话目录（`.claude`、`.codex`、`.codex-sub`）和家目录工具（`家目录`）。原始对话 `.jsonl` 本来就被排除，但会话附带的工具输出、子 agent 记录、上传的截图和记忆快照会按扩展名进 technical 或 personal；家目录里的技能说明、课程页面会进 personal。只改 `private-policy.json`，代码未动。
+
+| 规则（按顺序，先命中先生效） | 作用 |
+|---|---|
+| `.claude` 下的 `memory` → technical | 各项目的 agent 记忆仍可检索 |
+| `.claude` 下的其余目录 → exclude（`agent_session_data`） | 工具输出（txt/pdf）、子 agent 记录、上传附件、记忆快照不进索引 |
+| `.codex*` → technical | Codex 的技能、规则、记忆不再混进 personal |
+| `家目录` → technical | 家目录下的工具、课程和诊断材料不再混进 personal |
+
+按路径对当时的备份目录估算（不读文件内容）：`.claude` 进索引的文件从约 1,680 个降到 11 个；personal 范围少了约 380 个非个人文件；`.codex*`、`家目录` 的其余文件转入 technical。连同 10-11 的股票规则，进股票范围的文件从约 15 万个降到约 0.96 万个（10-14 新备进来约 10 万个原始公告）。部署步骤同下一节。
 
 ## 2026-10-11：不带资料名的自然问法（尚未部署）
 

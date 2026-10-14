@@ -540,6 +540,29 @@ class PrivatePolicyComponentTests(unittest.TestCase):
         self.assertEqual(classify('90_历史归档/tax.pdf', policy=shipped)['scope'], 'history')
         self.assertNotEqual(policy_signature(shipped), policy_signature(empty))
 
+    def test_shipped_policy_keeps_agent_session_data_out_and_agent_files_technical(self):
+        shipped = load_policy(Path(__file__).resolve().parents[1] / 'private-policy.json')
+        session = '导入/user/AI备份/.claude/projects/C--home/0f3a/'
+        for path in (session + 'tool-results/call-1.txt', session + 'tool-results/statement.pdf',
+                     session + 'subagents/agent-1.meta.json', '导入/user/AI备份/.claude/uploads/0f3a/shot.png',
+                     '导入/user/AI备份/.claude/memory-maintenance/20260101-cleanup/notes.md',
+                     '导入/user/AI备份/.claude/projects/C--home/memory-backup-20260101/a.md'):
+            self.assertEqual(classify(path, policy=shipped),
+                             {'scope': 'exclude', 'purpose': 'excluded', 'reason': 'agent_session_data'}, path)
+        # Raw conversations stay out through the earlier hard rule; memory notes stay findable as technical.
+        self.assertEqual(classify('导入/user/AI备份/.claude/projects/C--home/0f3a.jsonl', policy=shipped)['reason'],
+                         'raw_log_or_conversation')
+        self.assertEqual(classify('导入/user/AI备份/.claude/projects/C--work/memory/build-steps.md', policy=shipped)['scope'],
+                         'technical')
+        for path in ('导入/user/AI备份/.codex/skills/demo/SKILL.md', '导入/user/AI备份/.codex-sub/memories/MEMORY.md',
+                     '导入/user/AI备份/家目录/course/lesson-1.html', '导入/user/AI备份/家目录/tools/README.md'):
+            self.assertEqual(classify(path, policy=shipped)['scope'], 'technical', path)
+        self.assertEqual(classify('导入/user/AI备份/.codex/sessions/2026/01/01/rollout-1.jsonl', policy=shipped)['scope'],
+                         'exclude')
+        # The agent's main memory folder is backed up on its own and stays personal; other folders are untouched.
+        self.assertEqual(classify('导入/user/AI备份/claude-memory/user-profile.md', policy=shipped)['scope'], 'personal')
+        self.assertEqual(classify('导入/user/AI备份/桌面/resume.docx', policy=shipped)['scope'], 'personal')
+
     def test_invalid_rules_and_development_fixtures_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'policy.json'

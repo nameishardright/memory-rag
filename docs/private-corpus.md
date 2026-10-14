@@ -28,7 +28,10 @@ of rule: a path `prefix`, or a directory `component` found at any depth, optiona
 only `under` another directory and with shell-style wildcards. The first matching
 rule wins and hard exclusions take precedence. The shipped file excludes raw public
 filings and market-data caches inside stock research (`originals`, `sources`,
-`*-sources`, `inputs`, `px_cache`); written analysis stays in the stock scope. Never
+`*-sources`, `inputs`, `px_cache`); written analysis stays in the stock scope. It
+also keeps backed-up agent session data under `.claude` out (tool output, subagent
+records, uploads, memory snapshots) while project memory notes there stay technical,
+and files Codex agent folders and the backed-up home tools (`家目录`) as technical. Never
 repurpose evaluation material as facts or change goldens to obtain a passing result.
 
 ## Retrieval and storage
