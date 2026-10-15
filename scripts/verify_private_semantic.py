@@ -26,7 +26,8 @@ def main():
     from mr_private_eval import evaluate
     from mr_private_semantic import LocalEncoder
     fixtures = [CODE / 'tests' / 'fixtures' / name for name in
-                ('private_retrieval_holdout.json', 'private_ranking_holdout.json')]
+                ('private_retrieval_holdout.json', 'private_ranking_holdout.json', 'private_natural_dev.json',
+                 'private_natural_holdout.json')]
     frozen = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in fixtures}
     encoder = LocalEncoder()
     results = {}

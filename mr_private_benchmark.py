@@ -138,7 +138,11 @@ def paired_evaluate(store, labels_path, output, password, *, repetitions=2, base
                         'before_after_bm25': compare_reports(old_reports['bm25'], reports['bm25']),
                         'before_after_hybrid': compare_reports(old_reports['hybrid'], reports['hybrid'])})
         changes = summary['before_after_hybrid']['evidence']
+        # A baseline that fell back to keywords (for example because its vector
+        # cache belongs to another encoder version) is not a hybrid comparison.
+        summary['baseline_hybrid_actually_used'] = old_reports['hybrid']['summary']['modes'] == ['hybrid']
         summary['before_after_improved_in_this_sample'] = (comparison['hybrid_actually_used'] and
+                                                          summary['baseline_hybrid_actually_used'] and
                                                           changes['gains'] > changes['regressions'])
     save_store(output, password, {'version': 1, 'labels': labels, 'reports': reports,
                                  'baseline_reports': old_reports, 'summary': summary})

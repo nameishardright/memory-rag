@@ -6,7 +6,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from mr_private import PrivateRAG, make_chunks, save_store, load_store
+from mr_private import PrivateRAG, index_cache_path, make_chunks, save_store, load_store
 from mr_private_checkup import source_probes, run_checkup, acceptance_checks
 from mr_private_eval import evaluate
 from mr_private_sources import stage_github_snapshots, audit_sources
@@ -109,7 +109,7 @@ class PrivateEvaluationTests(unittest.TestCase):
             self.assertTrue(summary['native_ui']['lock_clears_session'])
             self.assertEqual(summary['hybrid_source_probes']['modes'], ['hybrid'])
             self.assertIsNone(summary['natural_question_accuracy'])
-            self.assertTrue((store.parent / 'corpus.semantic.personal.enc').is_file())
+            self.assertTrue(index_cache_path(store, 'personal', 'semantic').is_file())
             report = load_store(store.parent / 'personal-checkup' / 'source-probe-results.enc', 'synthetic-password')
             self.assertIn('source_probes', report)
             frozen_path = store.parent / 'personal-checkup' / 'source-probes.enc'

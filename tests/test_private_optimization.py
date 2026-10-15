@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from cryptography.exceptions import InvalidTag
-from mr_index import BM25
+from mr_index import BM25, tokenize as shared_tokenize
 from mr_private import (PrivateRAG, append_journal, import_journals,
                         load_private_rag, load_store, make_chunks, read_journal, save_store,
                         prune_generated_partitions)
@@ -38,7 +38,11 @@ class PrivateOptimizationTests(unittest.TestCase):
             self.assertEqual(classify('06_代码项目/old/' + filename)['scope'], 'technical')
         self.assertEqual(classify('04_财税与房产/2013/tax.pdf')['scope'], 'personal')
         self.assertEqual(classify('01_身份与移民/old/passport.pdf')['scope'], 'personal')
-        self.assertEqual(classify('导入/user/AI备份/股票分析/ABC/originals/10-k.htm')['scope'], 'stock')
+        self.assertEqual(classify('导入/user/AI备份/股票分析/ABC/analysis.md')['scope'], 'stock')
+        # Built-in routing still sends raw filings to stock; the shipped policy file excludes them.
+        self.assertEqual(classify('导入/user/AI备份/股票分析/ABC/originals/10-k.htm',
+                                  policy={'version': 1, 'rules': []})['scope'], 'stock')
+        self.assertEqual(classify('导入/user/AI备份/股票分析/ABC/originals/10-k.htm')['scope'], 'exclude')
         self.assertEqual(classify('90_历史归档/tax.pdf')['scope'], 'history')
 
     def test_dependencies_and_evaluations_are_excluded(self):
@@ -167,7 +171,9 @@ class PrivateOptimizationTests(unittest.TestCase):
         chunks = make_chunks(docs)
         chunks.extend({**c, 'md5': c['md5'] + 'copy', 'text': c['text'] + ' flight'} for c in chunks[:10])
         baseline = BM25(chunks)
-        index = PrivateBM25(chunks)
+        # Scoring and exact document top-k are checked with the full scan's own
+        # tokens; the private tokenizer is covered in test_private_natural_queries.
+        index = PrivateBM25(chunks, tokenizer=shared_tokenize)
         for query in ('family passport', 'flight flight tax', 'Montreal contract', 'absentunique', '家庭'):
             old = baseline.search(query, topk=len(chunks))
             seen, expected = set(), []

@@ -1,4 +1,5 @@
 """Directory and purpose rules for the private corpus, independent of archives."""
+from fnmatch import fnmatchcase
 import hashlib
 import json
 import os
@@ -47,9 +48,24 @@ def load_policy(path=None):
         if value.get('version') != POLICY_VERSION:
             raise ValueError('Unsupported private corpus policy version')
         for rule in value.get('rules', []):
-            if rule.get('scope') not in (*SCOPES, 'exclude') or not rule.get('prefix'):
+            # A rule names either a path prefix or a directory found at any depth.
+            if rule.get('scope') not in (*SCOPES, 'exclude') or bool(rule.get('prefix')) == bool(rule.get('component')):
                 raise ValueError('Invalid private corpus policy rule')
     return value
+
+
+def rule_matches(rule, parts):
+    if rule.get('prefix'):
+        prefix = normalized_parts(rule['prefix'])
+        return parts[:len(prefix)] == prefix
+    directories = parts[:-1]
+    if rule.get('under'):
+        parent = rule['under'].casefold()
+        if parent not in directories:
+            return False
+        directories = directories[directories.index(parent) + 1:]
+    pattern = rule['component'].casefold()
+    return any(fnmatchcase(directory, pattern) for directory in directories)
 
 
 def policy_signature(policy=None):
@@ -77,16 +93,15 @@ def classify(path, dependency=False, text='', policy=None):
         return {'scope': 'exclude', 'purpose': 'excluded', 'reason': 'raw_log_or_conversation'}
     frontmatter = re.match(r'\A\ufeff?---\s*\n(.*?)\n---(?:\s*\n|\s*$)', text[:2000], re.S)
     explicit_evaluation = bool(frontmatter and re.search(r'(?m)^rag_purpose:\s*evaluation\s*$', frontmatter.group(1)))
-    if name.startswith('private_') and name.endswith('_holdout.json'):
+    if name.startswith('private_') and name.endswith(('_holdout.json', '_dev.json')):
         explicit_evaluation = True
     if (EVALUATION_NAME.search(name) and any(p.startswith(('eval', 'benchmark', 'verification')) for p in parts)) or explicit_evaluation:
         return {'scope': 'exclude', 'purpose': 'evaluation', 'reason': 'evaluation_material'}
     for rule in (policy or load_policy()).get('rules', []):
-        prefix = '/'.join(normalized_parts(rule['prefix']))
-        normalized = '/'.join(parts)
-        if normalized == prefix or normalized.startswith(prefix + '/'):
+        if rule_matches(rule, parts):
             scope = rule['scope']
-            return {'scope': scope, 'purpose': rule.get('purpose', 'knowledge'), 'reason': rule.get('reason', 'directory_rule')}
+            return {'scope': scope, 'purpose': rule.get('purpose', 'excluded' if scope == 'exclude' else 'knowledge'),
+                    'reason': rule.get('reason', 'directory_rule')}
     if top.startswith('90_') or 'backups' in parts or 'rollout_summaries' in parts:
         return {'scope': 'history', 'purpose': 'historical', 'reason': 'historical_backup_or_session_summary'}
     if any(p in {'股票分析', 'stock-analysis', 'stock_analysis', '股票资料'} for p in parts):

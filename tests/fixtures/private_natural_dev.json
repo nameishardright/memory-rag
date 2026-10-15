@@ -1,0 +1,667 @@
+{
+ "version": 1,
+ "synthetic": true,
+ "label_origin": "agent_authored_fictional_natural_questions_without_source_names",
+ "boundary": "Agent-authored fictional development set written before the retrieval changes it accompanies. Questions carry no source names. Not real private accuracy and not an independent human evaluation.",
+ "documents": [
+  {
+   "id": "dev-offer",
+   "file": "03_work\\Northwind Fictional\\Rowan Example offer letter.txt",
+   "scope": "personal",
+   "text": "# Offer of employment\nNorthwind Fictional Systems Inc. is pleased to offer Rowan Example the position of Senior Software Developer.\nStart date: 2024-03-18.\nReporting manager: Dana Placeholder.\n\n# Compensation\nBase salary: CAD 128,500.00 per year, paid bi-weekly.\nSigning bonus: CAD 10,000, payable within 30 days of the start date.\n\n# Equity\nStock options: 2,400 options vesting monthly over four years with a one-year cliff.\nStrike price: USD 3.20 per share.\n\n# Benefits\nVacation: 20 days per calendar year.\nHealth and dental coverage begins on the first day of employment."
+  },
+  {
+   "id": "dev-old-offer",
+   "file": "90_archive\\old desktop\\Pinecrest offer 2019.txt",
+   "scope": "history",
+   "text": "# Offer of employment\nPinecrest Fictional Labs offers Rowan Example the position of Junior Developer.\nStart date: 2019-07-02.\nBase salary: CAD 61,000 per year.\nStock options: none.\nVacation: 10 days per calendar year.",
+   "purpose": "historical"
+  },
+  {
+   "id": "dev-copr",
+   "file": "01_identity\\PR\\Rowan Example confirmation of permanent residence.txt",
+   "scope": "personal",
+   "text": "# Confirmation of permanent residence\nFamily name: Example.\nGiven name: Rowan.\nBecame a permanent resident on: 2023-11-02.\nPort of entry: Montréal-Trudeau International Airport, Québec.\nDocument number: SYN-COPR-55120.\nCategory: Federal Skilled Worker."
+  },
+  {
+   "id": "dev-condo",
+   "file": "04_finance\\housing\\Fictional condo purchase agreement.txt",
+   "scope": "personal",
+   "text": "# Parties and property\n1.1 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n1.2 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n1.3 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\nBuyer: Rowan Example.\n\nSeller: Alder Fictional Developments Ltd.\n\nProperty: Unit 1207, 55 Imaginary Quay, together with one parking space and one locker.\n\n1.4 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n1.5 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n1.6 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n# Deposit\n2.1 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n2.2 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n2.3 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\nDeposit: CAD 30,000, payable to the seller's brokerage in trust within 24 hours of acceptance.\n\n2.4 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n2.5 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n2.6 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n# Financing condition\n3.1 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n3.2 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n3.3 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\nThis offer is conditional on the buyer arranging a new first mortgage within five business days.\n\n3.4 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n3.5 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n3.6 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n# Inspection condition\n4.1 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n4.2 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n4.3 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\nThe buyer may arrange an inspection of the unit at the buyer's own expense.\n\n4.4 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n4.5 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n4.6 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n# Status certificate\n5.1 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n5.2 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n5.3 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\nStatus certificate fee: CAD 100, paid by the seller.\n\n5.4 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n5.5 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n5.6 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n# Purchase price\n6.1 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n6.2 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n6.3 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\nPurchase price: CAD 612,000, subject to the usual adjustments.\n\n6.4 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n6.5 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n6.6 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n# Chattels and fixtures\n7.1 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion.\n\n7.2 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n7.3 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\nIncluded: refrigerator, stove, dishwasher, washer and dryer.\n\n7.4 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n7.5 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n7.6 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n# Adjustments\n8.1 The parties acknowledge that each has read this section in full and has had the opportunity to obtain independent advice before signing. No statement made outside this written document forms part of the arrangement between them, and any earlier discussion, brochure or message is replaced by the wording that appears here.\n\n8.2 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n8.3 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\nCommon expenses: CAD 587.40 per month, apportioned to the day of completion.\n\n8.4 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n8.5 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n8.6 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n# Closing\n9.1 Where a period of time is counted in days, the first day is excluded and the last day is included, and if the last day falls on a weekend or a statutory holiday the period ends on the next business day. Time remains of the essence unless both parties agree otherwise in writing.\n\n9.2 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n9.3 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\nClosing date: 2025-06-27, by no later than 6:00 p.m.\n\nVacant possession is given on completion.\n\n9.4 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\n9.5 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n9.6 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n# Signatures\n10.1 Any notice required under this section must be delivered in writing to the address shown for the receiving party, or sent by electronic means to the contact that party last confirmed. A notice is treated as received on the business day after it was sent.\n\n10.2 If any part of this section is found to be unenforceable, the remaining wording continues to apply as far as the law allows, and the parties will cooperate in good faith to replace the affected wording with terms that achieve the same practical result.\n\n10.3 Each party is responsible for its own professional fees, including legal, accounting and inspection costs, unless another section of this document expressly assigns a particular cost to one party.\n\nSigned by the buyer and the seller on 2025-04-11.\n\n10.4 Headings are included for convenience only and do not change the meaning of the wording beneath them. Words in the singular include the plural, and references to a person include that person's permitted successors.\n\n10.5 A failure or delay by either party in exercising a right under this section does not waive that right, and a single or partial exercise does not prevent a later or fuller exercise of the same right.\n\n10.6 This section is governed by the laws that apply where the property or service is located, and the parties submit to the ordinary courts of that place for any dispute that cannot be resolved by discussion."
+  },
+  {
+   "id": "dev-condo-brochure",
+   "file": "04_finance\\housing\\Fictional condo marketing brochure.txt",
+   "scope": "personal",
+   "text": "# Imaginary Quay residences\nPrices from CAD 499,900.\nOccupancy from spring 2026.\nThis brochure is marketing material and is not an agreement of purchase and sale."
+  },
+  {
+   "id": "dev-t4-2024",
+   "file": "04_finance\\tax\\Rowan Example T4 2024.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Northwind Fictional Systems Inc.\nBox 14 - Employment income: 131,204.18\nBox 22 - Income tax deducted: 31,877.40\nBox 16 - Employee's CPP contributions: 4,055.50"
+  },
+  {
+   "id": "dev-t4-2023",
+   "file": "04_finance\\tax\\Rowan Example T4 2023.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Pinecrest Fictional Labs\nBox 14 - Employment income: 118,950.00\nBox 22 - Income tax deducted: 27,410.25\nBox 16 - Employee's CPP contributions: 3,754.45"
+  },
+  {
+   "id": "dev-t4-2022",
+   "file": "04_finance\\tax\\Rowan Example T4 2022.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Pinecrest Fictional Labs\nBox 14 - Employment income: 104,300.75\nBox 22 - Income tax deducted: 22,960.10\nBox 16 - Employee's CPP contributions: 3,499.80"
+  },
+  {
+   "id": "dev-t4-2021",
+   "file": "04_finance\\tax\\Rowan Example T4 2021.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Pinecrest Fictional Labs\nBox 14 - Employment income: 88,412.00\nBox 22 - Income tax deducted: 18,077.63\nBox 16 - Employee's CPP contributions: 3,166.45"
+  },
+  {
+   "id": "dev-t4-2020",
+   "file": "04_finance\\tax\\Rowan Example T4 2020.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Pinecrest Fictional Labs\nBox 14 - Employment income: 71,950.40\nBox 22 - Income tax deducted: 13,584.02\nBox 16 - Employee's CPP contributions: 2,898.00"
+  },
+  {
+   "id": "dev-t4-2019",
+   "file": "04_finance\\tax\\Rowan Example T4 2019.txt",
+   "scope": "personal",
+   "text": "# Statement of remuneration paid\nEmployer's name: Pinecrest Fictional Labs\nBox 14 - Employment income: 30,500.00\nBox 22 - Income tax deducted: 4,270.55\nBox 16 - Employee's CPP contributions: 1,402.10"
+  },
+  {
+   "id": "dev-noa-2023",
+   "file": "04_finance\\tax\\Notice of assessment 2023.txt",
+   "scope": "personal",
+   "text": "# Notice of assessment\nTaxpayer: Rowan Example.\nRefund: CAD 1,204.55.\nRRSP deduction limit for next year: CAD 21,411."
+  },
+  {
+   "id": "dev-noa-2022",
+   "file": "04_finance\\tax\\Notice of assessment 2022.txt",
+   "scope": "personal",
+   "text": "# Notice of assessment\nTaxpayer: Rowan Example.\nBalance owing: CAD 318.20.\nRRSP deduction limit for next year: CAD 18,774."
+  },
+  {
+   "id": "dev-hukou",
+   "file": "01_identity\\公证\\虚构户口本公证书.txt",
+   "scope": "personal",
+   "text": "# 户口本公证书\n申请人：罗文示例，男。\n出生日期：一九九一年四月十二日。\n出生地：江苏省苏州市。\n公证书编号：（2021）虚构证字第3391号。"
+  },
+  {
+   "id": "dev-card-2025-02",
+   "file": "04_finance\\Fictional Harbour Bank credit card statement 2025-02.txt",
+   "scope": "personal",
+   "text": "# Credit card statement\nCardholder: Rowan Example.\nStatement period: 2025-02-01 to 2025-02-28.\nNew balance: CAD 1,902.17.\nMinimum payment: CAD 10.00.\nPayment due date: 2025-03-21."
+  },
+  {
+   "id": "dev-card-2025-03",
+   "file": "04_finance\\Fictional Harbour Bank credit card statement 2025-03.txt",
+   "scope": "personal",
+   "text": "# Credit card statement\nCardholder: Rowan Example.\nStatement period: 2025-03-01 to 2025-03-28.\nNew balance: CAD 2,318.44.\nMinimum payment: CAD 10.00.\nPayment due date: 2025-04-21."
+  },
+  {
+   "id": "dev-card-2025-04",
+   "file": "04_finance\\Fictional Harbour Bank credit card statement 2025-04.txt",
+   "scope": "personal",
+   "text": "# Credit card statement\nCardholder: Rowan Example.\nStatement period: 2025-04-01 to 2025-04-28.\nNew balance: CAD 1,655.09.\nMinimum payment: CAD 10.00.\nPayment due date: 2025-05-21."
+  },
+  {
+   "id": "dev-daycare",
+   "file": "02_family\\Juniper\\Maple Seedlings childcare enrolment.txt",
+   "scope": "personal",
+   "text": "# Childcare enrolment confirmation\nChild: Juniper Example.\nCentre: Maple Seedlings Childcare.\nMonthly fee: CAD 1,150.\nFirst day: 2025-09-02."
+  },
+  {
+   "id": "dev-resume",
+   "file": "03_work\\resume\\Rowan Example resume 2025.txt",
+   "scope": "personal",
+   "text": "# Experience\nNorthwind Fictional Systems, Senior Software Developer, 2024 to present.\nLed the Harbor Scheduler project, cutting nightly batch latency by 37%.\n\n# Education\nBachelor of Applied Science, Fictional Lakeside University, 2016."
+  },
+  {
+   "id": "dev-code-readme",
+   "file": "06_code\\harbor-scheduler\\README.md",
+   "scope": "technical",
+   "text": "# Harbor Scheduler\nA fictional batch scheduler built around a priority queue.\nStorage layer: SQLite.\nLanguage: C#."
+  },
+  {
+   "id": "dev-code-notes",
+   "file": "06_code\\tide-notes\\design.md",
+   "scope": "technical",
+   "text": "# Tide Notes design\nA fictional note-taking service. The architecture uses an event log and a read model.\nStorage layer: PostgreSQL."
+  },
+  {
+   "id": "dev-stock-note",
+   "file": "stock\\SYNQ\\Fictional SYNQ options note.md",
+   "scope": "stock",
+   "text": "# SYNQ options\nFictional ticker SYNQ.\nImplied volatility: 44%.\nEarnings date: 2025-11-06."
+  },
+  {
+   "id": "dev-stock-other",
+   "file": "stock\\LUMA\\Fictional LUMA earnings note.md",
+   "scope": "stock",
+   "text": "# LUMA earnings\nFictional ticker LUMA.\nQuarterly revenue: USD 12 million.\nImplied volatility: 61%."
+  },
+  {
+   "id": "dev-licence",
+   "file": "01_identity\\Rowan Example driver licence.txt",
+   "scope": "personal",
+   "text": "# Driver's licence\nLicence number: SYN-DL-88231-40117.\nClass: G.\nExpiry date: 2029-08-14."
+  },
+  {
+   "id": "dev-hydro",
+   "file": "04_finance\\bills\\Fictional hydro bill 2025-01.txt",
+   "scope": "personal",
+   "text": "# Electricity bill\nAccount number: SYN-HY-220019.\nAmount due: CAD 96.12.\nDue date: 2025-02-14."
+  },
+  {
+   "id": "dev-phone",
+   "file": "04_finance\\bills\\Fictional mobile plan.txt",
+   "scope": "personal",
+   "text": "# Mobile plan summary\nPlan: 40 GB with Canada-wide calling.\nMonthly charge: CAD 55.00."
+  },
+  {
+   "id": "dev-gym",
+   "file": "05_misc\\Fictional gym membership.txt",
+   "scope": "personal",
+   "text": "# Gym membership\nMembership number: SYN-GYM-4471.\nRenewal date: 2026-01-05."
+  },
+  {
+   "id": "dev-home-insurance",
+   "file": "04_finance\\insurance\\Fictional tenant insurance policy.txt",
+   "scope": "personal",
+   "text": "# Tenant insurance policy\nPolicy number: SYN-POL-77120.\nAnnual premium: CAD 318.00.\nLiability limit: CAD 1,000,000."
+  },
+  {
+   "id": "dev-auto-insurance",
+   "file": "04_finance\\insurance\\Fictional auto insurance policy.txt",
+   "scope": "personal",
+   "text": "# Automobile insurance policy\nPolicy number: SYN-AUTO-30955.\nPremium: CAD 1,942.00 per year.\nRenewal: 2025-12-01.\nLiability limit: CAD 2,000,000."
+  },
+  {
+   "id": "dev-bank",
+   "file": "04_finance\\Fictional Harbour Bank account opening.txt",
+   "scope": "personal",
+   "text": "# Account opening confirmation\nChequing account: transit 00412, institution 999.\nOpened: 2021-09-08."
+  },
+  {
+   "id": "dev-rrsp",
+   "file": "04_finance\\tax\\Fictional RRSP contribution receipt 2024.txt",
+   "scope": "personal",
+   "text": "# RRSP contribution receipt\nContribution amount: CAD 7,500.00.\nPeriod: first 60 days of the year."
+  },
+  {
+   "id": "dev-passport",
+   "file": "01_identity\\Rowan Example passport.txt",
+   "scope": "personal",
+   "text": "# Passport\nHolder: Rowan Example.\nPassport number: SYN-P-6627104.\nDate of issue: 2022-01-17.\nDate of expiry: 2032-01-16.\nPlace of issue: Toronto."
+  },
+  {
+   "id": "dev-spouse-passport",
+   "file": "01_identity\\Kai Placeholder passport.txt",
+   "scope": "personal",
+   "text": "# Passport\nHolder: Kai Placeholder.\nPassport number: SYN-P-9938217.\nDate of expiry: 2030-05-03."
+  },
+  {
+   "id": "dev-pr-card",
+   "file": "01_identity\\PR\\Rowan Example PR card.txt",
+   "scope": "personal",
+   "text": "# Permanent resident card\nCard number: SYN-PRC-0041-7782.\nExpiry: 2028-12-09."
+  },
+  {
+   "id": "dev-work-permit",
+   "file": "01_identity\\old\\Rowan Example work permit.txt",
+   "scope": "personal",
+   "text": "# Work permit\nEmployer: Pinecrest Fictional Labs.\nValid until: 2022-09-30."
+  },
+  {
+   "id": "dev-study-permit",
+   "file": "01_identity\\old\\Rowan Example study permit.txt",
+   "scope": "personal",
+   "text": "# Study permit\nInstitution: Fictional Lakeside University.\nValid until: 2016-08-31."
+  },
+  {
+   "id": "dev-transcript",
+   "file": "03_work\\education\\Lakeside transcript.txt",
+   "scope": "personal",
+   "text": "# Official transcript\nStudent: Rowan Example.\nCumulative GPA: 3.62.\nDegree conferred: 2016-06-14."
+  },
+  {
+   "id": "dev-reference",
+   "file": "03_work\\Reference letter from Dana Placeholder.txt",
+   "scope": "personal",
+   "text": "# Reference letter\nAuthor: Dana Placeholder.\nRelationship: direct manager for fourteen months.\nDate: 2025-05-30."
+  },
+  {
+   "id": "dev-flight",
+   "file": "02_family\\travel\\Fictional itinerary Vancouver trip.txt",
+   "scope": "personal",
+   "text": "# Flight itinerary\nFlight: SY 204, Toronto YYZ to Vancouver YVR.\nDeparture: 2025-07-19 at 09:15.\nBooking reference: SYNVAN7."
+  },
+  {
+   "id": "dev-hotel",
+   "file": "02_family\\travel\\Fictional hotel booking Vancouver.txt",
+   "scope": "personal",
+   "text": "# Hotel booking\nCheck-in: 2025-07-19.\nCheck-out: 2025-07-24.\nConfirmation: SYN-HTL-52018.\nTotal: CAD 1,480.75."
+  },
+  {
+   "id": "dev-lab",
+   "file": "05_health\\Fictional lab result.txt",
+   "scope": "personal",
+   "text": "# Laboratory report\nVitamin D: 62 nmol/L.\nCollected: 2025-02-03."
+  },
+  {
+   "id": "dev-dental",
+   "file": "05_health\\Fictional dental claim.txt",
+   "scope": "personal",
+   "text": "# Dental claim statement\nClaim amount: CAD 240.00.\nPaid by plan: CAD 192.00."
+  },
+  {
+   "id": "dev-vaccine",
+   "file": "05_health\\Juniper vaccination record.txt",
+   "scope": "personal",
+   "text": "# Immunization record\nChild: Juniper Example.\nVaccine: MMR dose 2.\nDate administered: 2024-05-09.\nClinic: Fictional Riverside Pediatrics."
+  },
+  {
+   "id": "dev-lease-old",
+   "file": "04_finance\\housing\\Fictional apartment lease 2022.txt",
+   "scope": "personal",
+   "text": "# Residential lease\nMonthly rent: CAD 2,150.\nLease start: 2022-05-01.\nLease end: 2023-04-30.\nLandlord: Birchwood Fictional Properties."
+  },
+  {
+   "id": "dev-parking",
+   "file": "05_misc\\Fictional parking permit.txt",
+   "scope": "personal",
+   "text": "# Street parking permit\nPermit number: SYN-PK-10277.\nZone: 4C.\nValid until: 2025-11-30."
+  },
+  {
+   "id": "dev-car",
+   "file": "04_finance\\Fictional car purchase.txt",
+   "scope": "personal",
+   "text": "# Bill of sale\nVehicle: 2021 Fictional Sedan.\nPrice: CAD 24,300.\nVIN: SYNVIN00112233445."
+  },
+  {
+   "id": "dev-warranty",
+   "file": "05_misc\\Fictional dishwasher warranty.txt",
+   "scope": "personal",
+   "text": "# Warranty registration\nModel: DW-Fictional-300.\nWarranty ends: 2027-03-02."
+  },
+  {
+   "id": "dev-library",
+   "file": "05_misc\\Fictional library card.txt",
+   "scope": "personal",
+   "text": "# Library card\nCard number: SYN-LIB-9003321.\nBranch: Imaginary Harbourfront."
+  },
+  {
+   "id": "dev-kid-swim",
+   "file": "02_family\\Juniper\\Swimming lessons receipt.txt",
+   "scope": "personal",
+   "text": "# Swimming lessons receipt\nChild: Juniper Example.\nSession: Saturday mornings, ten weeks.\nAmount paid: CAD 185.00."
+  },
+  {
+   "id": "dev-marriage",
+   "file": "01_identity\\公证\\虚构结婚证公证书.txt",
+   "scope": "personal",
+   "text": "# 结婚证公证书\n申请人：罗文示例、凯占位。\n结婚登记日期：二〇一八年十月六日。\n登记机关：苏州市虚构区民政局。\n公证书编号：（2021）虚构证字第3392号。"
+  },
+  {
+   "id": "dev-degree-notarization",
+   "file": "01_identity\\公证\\虚构学位证公证书.txt",
+   "scope": "personal",
+   "text": "# 学位证公证书\n申请人：罗文示例。\n学位：工学学士。\n授予单位：虚构湖畔大学。\n公证书编号：（2021）虚构证字第3393号。"
+  },
+  {
+   "id": "dev-id-card",
+   "file": "01_identity\\公证\\虚构身份证公证书.txt",
+   "scope": "personal",
+   "text": "# 居民身份证公证书\n申请人：罗文示例。\n公民身份号码：虚构-320500-19910412-0018。\n公证书编号：（2021）虚构证字第3394号。"
+  }
+ ],
+ "questions": [
+  {
+   "id": "dq-offer-options",
+   "case_group": "dev-offer-event",
+   "split": "regression",
+   "query": "入职时公司给了我多少期权？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-offer"
+   ],
+   "required_text": [
+    "2,400 options"
+   ]
+  },
+  {
+   "id": "dq-offer-vacation",
+   "case_group": "dev-offer-event",
+   "split": "regression",
+   "query": "我现在这份工作一年有多少天年假？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-offer"
+   ],
+   "required_text": [
+    "20 days"
+   ]
+  },
+  {
+   "id": "dq-offer-salary-number",
+   "case_group": "dev-offer-event",
+   "split": "regression",
+   "query": "年薪 128500 是哪份文件里写的？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-offer"
+   ],
+   "required_text": [
+    "128,500.00"
+   ]
+  },
+  {
+   "id": "dq-copr-airport-zh",
+   "case_group": "dev-copr-event",
+   "split": "regression",
+   "query": "我是在哪个机场入境成为永久居民的？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-copr"
+   ],
+   "required_text": [
+    "Montréal-Trudeau"
+   ]
+  },
+  {
+   "id": "dq-copr-montreal-en",
+   "case_group": "dev-copr-event",
+   "split": "regression",
+   "query": "Which document mentions Montreal as my port of entry?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-copr"
+   ],
+   "required_text": [
+    "Montréal-Trudeau International Airport"
+   ]
+  },
+  {
+   "id": "dq-condo-price-zh",
+   "case_group": "dev-condo-event",
+   "split": "regression",
+   "query": "我买公寓的成交价是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-condo"
+   ],
+   "required_text": [
+    "CAD 612,000"
+   ]
+  },
+  {
+   "id": "dq-condo-closing-zh",
+   "case_group": "dev-condo-event",
+   "split": "regression",
+   "query": "公寓的交割日是哪一天？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-condo"
+   ],
+   "required_text": [
+    "2025-06-27"
+   ]
+  },
+  {
+   "id": "dq-condo-deposit-en",
+   "case_group": "dev-condo-event",
+   "split": "regression",
+   "query": "How much deposit did I put down on the condo?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-condo"
+   ],
+   "required_text": [
+    "CAD 30,000"
+   ]
+  },
+  {
+   "id": "dq-t4-income-zh",
+   "case_group": "dev-t4-2024-event",
+   "split": "regression",
+   "query": "2024 年 T4 上的就业收入是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-t4-2024"
+   ],
+   "required_text": [
+    "131,204.18"
+   ]
+  },
+  {
+   "id": "dq-t4-tax-en",
+   "case_group": "dev-t4-2022-event",
+   "split": "regression",
+   "query": "How much income tax was deducted on my 2022 T4?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-t4-2022"
+   ],
+   "required_text": [
+    "22,960.10"
+   ]
+  },
+  {
+   "id": "dq-hukou-birthplace-en",
+   "case_group": "dev-hukou-event",
+   "split": "regression",
+   "query": "Where was I born according to my household register notarization?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-hukou"
+   ],
+   "required_text": [
+    "江苏省苏州市"
+   ]
+  },
+  {
+   "id": "dq-hukou-number-zh",
+   "case_group": "dev-hukou-event",
+   "split": "regression",
+   "query": "户口本公证书的编号是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-hukou"
+   ],
+   "required_text": [
+    "3391"
+   ]
+  },
+  {
+   "id": "dq-card-march",
+   "case_group": "dev-card-event",
+   "split": "regression",
+   "query": "2025-03 那期信用卡账单的还款日是哪天？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-card-2025-03"
+   ],
+   "required_text": [
+    "2025-04-21"
+   ]
+  },
+  {
+   "id": "dq-daycare-fee-zh",
+   "case_group": "dev-daycare-event",
+   "split": "regression",
+   "query": "女儿托儿所每个月的费用是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-daycare"
+   ],
+   "required_text": [
+    "CAD 1,150"
+   ]
+  },
+  {
+   "id": "dq-resume-project-zh",
+   "case_group": "dev-resume-event",
+   "split": "regression",
+   "query": "我简历里那个调度项目把延迟降低了多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-resume"
+   ],
+   "required_text": [
+    "37%"
+   ]
+  },
+  {
+   "id": "dq-transcript-gpa-zh",
+   "case_group": "dev-transcript-event",
+   "split": "regression",
+   "query": "我大学成绩单上的 GPA 是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-transcript"
+   ],
+   "required_text": [
+    "3.62"
+   ]
+  },
+  {
+   "id": "dq-code-storage-en",
+   "case_group": "dev-code-event",
+   "split": "regression",
+   "query": "In my code repository for Harbor Scheduler, what is the storage layer?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-code-readme"
+   ],
+   "required_text": [
+    "SQLite"
+   ]
+  },
+  {
+   "id": "dq-stock-iv-zh",
+   "case_group": "dev-stock-event",
+   "split": "regression",
+   "query": "SYNQ 的期权隐含波动率是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-stock-note"
+   ],
+   "required_text": [
+    "44%"
+   ]
+  },
+  {
+   "id": "dq-licence-expiry-zh",
+   "case_group": "dev-licence-event",
+   "split": "regression",
+   "query": "我的驾照什么时候到期？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-licence"
+   ],
+   "required_text": [
+    "2029-08-14"
+   ]
+  },
+  {
+   "id": "dq-licence-partial-id",
+   "case_group": "dev-licence-event",
+   "split": "regression",
+   "query": "88231-40117",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-licence"
+   ],
+   "required_text": [
+    "SYN-DL-88231-40117"
+   ]
+  },
+  {
+   "id": "dq-insurance-liability-zh",
+   "case_group": "dev-insurance-event",
+   "split": "regression",
+   "query": "租客保险的责任险额度是多少？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-home-insurance"
+   ],
+   "required_text": [
+    "CAD 1,000,000"
+   ]
+  },
+  {
+   "id": "dq-flight-departure-zh",
+   "case_group": "dev-flight-event",
+   "split": "regression",
+   "query": "去温哥华的航班几点起飞？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-flight"
+   ],
+   "required_text": [
+    "09:15"
+   ]
+  },
+  {
+   "id": "dq-passport-expiry-en",
+   "case_group": "dev-passport-event",
+   "split": "regression",
+   "query": "When does my passport expire?",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-passport"
+   ],
+   "required_text": [
+    "2032-01-16"
+   ]
+  },
+  {
+   "id": "dq-vaccine-mmr",
+   "case_group": "dev-vaccine-event",
+   "split": "regression",
+   "query": "MMR 第二针是哪天打的？",
+   "scope": "auto",
+   "expected_documents": [
+    "dev-vaccine"
+   ],
+   "required_text": [
+    "2024-05-09"
+   ]
+  },
+  {
+   "id": "dn-us-visa",
+   "case_group": "negative-dn-us-visa",
+   "split": "regression",
+   "positive": false,
+   "query": "我的美国签证什么时候到期？",
+   "scope": "auto"
+  },
+  {
+   "id": "dn-t4-2027",
+   "case_group": "negative-dn-t4-2027",
+   "split": "regression",
+   "positive": false,
+   "query": "What is my 2027 T4 employment income?",
+   "scope": "auto"
+  },
+  {
+   "id": "dn-absent-id",
+   "case_group": "negative-dn-absent-id",
+   "split": "regression",
+   "positive": false,
+   "query": "SYN-ABSENT-000000",
+   "scope": "auto"
+  },
+  {
+   "id": "dn-pet-insurance",
+   "case_group": "negative-dn-pet-insurance",
+   "split": "regression",
+   "positive": false,
+   "query": "宠物保险的保单号是多少？",
+   "scope": "auto"
+  }
+ ]
+}

@@ -4,6 +4,29 @@
 
 先读本页和[变更记录](CHANGELOG-RAG.md)，再按[私有版使用指南](private-corpus.md)操作。这些文件只包含通用实现、操作路径和汇总结果。
 
+## 未部署的后续分支（2026-10-11）
+
+`fix/private-natural-retrieval` 基于 `2bb85d1`，针对不带资料名的日常问法。改动、修改前后对照和部署步骤见[变更记录](CHANGELOG-RAG.md)第一节。本页其余内容描述的仍是 OneDrive 里正在运行的 `2bb85d1`。
+
+合入并部署后，下面几处会变：
+
+- 自动范围路由到 technical、stock 或 history 时同时查 personal，结果交替合并；尚未加载的大分区不自动打开，返回里带 `route.deferred_scope`。手动选择的范围不受影响。
+- 私有版的关键词分词改用 `mr_private_index.tokenize`，不再直接用 `mr_index.tokenize`；`mr_index.rrf_files` 仍然复用，工作学习版没有改动。
+- 长文件的 evidence 由关键词和向量一起选段，并带上相邻段。
+- 索引缓存换了文件名（`corpus.lexical2.*.enc`、`corpus.semantic2.*.enc`），旧代码的缓存不读不改；新代码的向量要按范围 prepare 一次，关键词缓存自动建。
+- 默认策略排除股票研究目录下的原始公告和行情缓存，下一次导入会重写分区。
+
+这批改动是在另一台没有资料库、也没有口令的电脑上做的，只跑过虚构题集：单元检查 236 项、四份虚构题集 85 个正例的本地 E5 回归、新旧代码的成对对照，以及加 600 份虚构干扰记录的对照（`--pad 600`）。提交前由另一个 agent 独立复审过一轮，指出的问题已修并各有单元检查。真实资料上的回归要在资料源电脑上完成后才能部署：
+
+```powershell
+py -3.12 -m unittest discover -s tests
+py -3.12 scripts/verify_private_semantic.py --output .cache/private-semantic.json
+py -3.12 scripts/compare_private_versions.py --baseline-code <2bb85d1 的目录> --pad 600 --regression-fixture tests/fixtures/private_natural_dev.json --regression-fixture tests/fixtures/private_natural_holdout.json --output .cache/compare/check.json
+py -3.12 mr_private_benchmark.py --store <corpus.enc> --labels <已有的加密题集> --output <结果.enc> --summary <汇总.json> --baseline-code <2bb85d1 的目录>
+```
+
+两份新的虚构题集都已经用过：`private_natural_dev.json` 是开发集，`private_natural_holdout.json` 在 2026-10-11 作为留出集消耗了一次，之后都只能当回归。
+
 ## 本机位置和版本核对
 
 下面使用 Windows 环境变量表示位置；这台电脑的生产目录是用户 OneDrive 下的 `_Private-Memory-RAG`。

@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from mr_private import PrivateRAG, make_chunks, load_store, save_store
-from mr_private_benchmark import compare_reports, consume_holdout, paired_evaluate, isolated_baseline
+from mr_private_benchmark import (compare_reports, consume_holdout, paired_evaluate, isolated_baseline,
+                                  source_signature)
 from mr_private_eval import validate_labels, labels_sha256
 from mr_private_natural import author_sets, authoring_counts, source_candidates
 
@@ -100,6 +101,45 @@ class PrivateBenchmarkTests(unittest.TestCase):
             self.assertEqual(load_store(output, 'fictional-test-password')['labels'], labels)
             self.assertNotIn(b'CAD 80000', output.read_bytes())
             self.assertNotIn('fictional-offer', json.dumps(summary))
+
+    def test_baseline_that_fell_back_to_keywords_is_not_a_hybrid_improvement(self):
+        docs = documents(1)
+        labels = {'version': 1, 'questions': [{'id': 'query', 'query': 'annual compensation',
+                  'case_group': 'event', 'scope': 'personal', 'split': 'regression',
+                  'expected_documents': [docs[0]['id']], 'required_text': ['CAD 80000']}]}
+        class Encoder:
+            signature = 'synthetic-encoder'
+            def windows(self, chunk):
+                return [{'key': chunk['md5'], 'start': 0, 'end': len(chunk['text']), 'text': chunk['text']}]
+            def encode(self, texts, query=False):
+                import numpy as np
+                return np.full((len(texts), 2), 2 ** -.5, dtype='<f4')
+        def open_rag(*args, **kwargs):
+            rag = PrivateRAG({'documents': docs, 'chunks': make_chunks(docs)}, mode=kwargs['mode'],
+                             encoder_factory=lambda: Encoder())
+            if kwargs['mode'] == 'hybrid':
+                rag.prepare_semantic('personal')
+            return rag
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); label_path = root / 'labels.enc'
+            save_store(label_path, 'fictional-test-password', labels)
+            probe = open_rag(mode='bm25'); signature = source_signature(probe, labels); probe.close()
+            for modes, used in ((['bm25(fallback)'], False), (['hybrid'], True)):
+                def baseline(backend, store, labels_path, output, password, mode):
+                    return {'source_signature': signature, 'report': {
+                        'summary': {'labels_sha256': labels_sha256(labels),
+                                    'modes': modes if mode == 'hybrid' else ['bm25']},
+                        'questions': [{'id': 'query', 'positive': True, 'case_group': 'event',
+                                       'rank': None, 'evidence_complete': False}]}}
+                with patch('mr_private_benchmark.load_private_rag', side_effect=open_rag), \
+                     patch('mr_private_benchmark.isolated_baseline', side_effect=baseline), \
+                     patch('mr_private_benchmark.code_fingerprint', return_value={}):
+                    summary = paired_evaluate(root / 'unused.enc', label_path, root / ('results-' + str(used) + '.enc'),
+                                              'fictional-test-password', repetitions=0, baseline_code=root)
+                self.assertTrue(summary['comparison']['hybrid_actually_used'])
+                self.assertEqual(summary['before_after_hybrid']['evidence'], {'gains': 1, 'regressions': 0})
+                self.assertEqual(summary['baseline_hybrid_actually_used'], used)
+                self.assertEqual(summary['before_after_improved_in_this_sample'], used)
 
     def test_source_change_is_rejected_without_rewriting_labels(self):
         docs = documents(1)

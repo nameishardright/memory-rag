@@ -1,6 +1,6 @@
 """Local field extraction and previews linked to complete source evidence."""
 import re
-from mr_index import tokenize
+from mr_private_index import tokenize
 
 PAN_PATTERNS = [re.compile(r'(?<!\d)(?=(\d(?:[ \t-]*\d){' + str(n - 1) + r'})(?!\d))')
                 for n in (13, 15, 16, 19)]
@@ -13,13 +13,134 @@ LABEL_WORDS = re.compile(
 GENERIC = {'card', 'card number', 'visa', 'mastercard', 'master card', 'account', '卡号'}
 BANK_WORDS = {'money', 'acc', 'acct', 'cheque', 'cheqe', 'saving', 'client', '借记卡'}
 CARD_INTENT = re.compile(r'(?i)信用卡|卡号|credit\s*cards?|card\s*numbers?')
-ALIASES = {
-    '家庭': 'family father mother spouse child', '父亲': 'father', '母亲': 'mother',
-    '配偶': 'spouse wife husband', '旅行': 'travel trip itinerary flight',
-    '出入境': 'travel entry exit arrival departure', '护照': 'passport',
-    '生日': 'date of birth', '地址': 'address', '账号': 'account username login',
-    '密码': 'password', '税务': 'tax CRA', '工作': 'employment employer',
-}
+# Keyword bridge between Chinese questions and English records, and back. It only
+# widens the BM25 query; the local vectors remain the general multilingual path.
+# Each row: Chinese ways of saying it, then the English terms records use.
+GLOSSARY = (
+    # identity and immigration
+    (('护照',), ('passport',)),
+    (('签证',), ('visa',)),
+    (('身份证',), ('identity card', 'ID card')),
+    (('驾照', '驾驶证'), ('driver licence', 'driver license', 'driving licence')),
+    (('出生地',), ('place of birth', 'birthplace', 'born')),
+    (('生日', '出生日期'), ('date of birth', 'birthday')),
+    (('出生证明', '出生公证'), ('birth certificate',)),
+    (('户口',), ('household register', 'hukou')),
+    (('公证',), ('notarization', 'notarized', 'notarial', 'notary')),
+    (('结婚',), ('marriage', 'married')),
+    (('永久居民', '枫叶卡'), ('permanent resident', 'PR card')),
+    (('移民',), ('immigration', 'immigrant')),
+    (('登陆', '入境'), ('landing', 'landed', 'port of entry')),
+    (('工签', '工作许可'), ('work permit',)),
+    (('学签', '学习许可'), ('study permit',)),
+    (('社保号', '社会保险号'), ('social insurance number', 'SIN')),
+    (('健康卡', '医保卡'), ('health card',)),
+    (('到期', '过期', '有效期'), ('expiry', 'expires', 'expire', 'expiration', 'valid until')),
+    (('签发',), ('issued', 'date of issue')),
+    # family
+    (('家庭',), ('family', 'father', 'mother', 'spouse', 'child')),
+    (('父亲', '爸爸'), ('father',)),
+    (('母亲', '妈妈'), ('mother',)),
+    (('配偶', '妻子', '老婆', '丈夫', '老公', '爱人'), ('spouse', 'wife', 'husband')),
+    (('女儿',), ('daughter', 'child')),
+    (('儿子',), ('son', 'child')),
+    (('孩子', '小孩'), ('child', 'children')),
+    (('托儿所', '幼儿园', '日托'), ('daycare', 'childcare', 'kindergarten', 'preschool')),
+    (('成绩',), ('grades', 'report card', 'transcript', 'GPA')),
+    (('疫苗',), ('vaccine', 'vaccination', 'immunization')),
+    # work and education
+    (('工作',), ('employment', 'employer')),
+    (('雇主',), ('employer',)),
+    (('工资', '薪水', '年薪', '薪资', '薪酬'), ('salary', 'pay', 'compensation', 'remuneration')),
+    (('收入',), ('income', 'earnings')),
+    (('奖金',), ('bonus',)),
+    (('期权', '股权', '股票'), ('stock options', 'equity', 'shares', 'share units')),
+    (('年假', '假期', '带薪假', '休假'), ('vacation', 'paid time off', 'leave')),
+    (('合同', '协议'), ('contract', 'agreement')),
+    (('录用', '聘书'), ('offer of employment', 'offer letter')),
+    (('简历',), ('resume', 'CV')),
+    (('推荐信',), ('reference letter',)),
+    (('绩效',), ('performance review', 'rating')),
+    (('工号', '员工号'), ('employee number',)),
+    (('福利',), ('benefits',)),
+    (('学位', '学历', '毕业'), ('degree', 'diploma', 'graduation', 'bachelor', 'master')),
+    (('大学',), ('university', 'college')),
+    (('成绩单',), ('transcript',)),
+    (('学费',), ('tuition',)),
+    # money, tax and insurance
+    (('税务', '报税', '税单'), ('tax', 'CRA')),
+    (('退税',), ('refund',)),
+    (('账单',), ('bill', 'statement')),
+    (('发票', '收据'), ('invoice', 'receipt')),
+    (('信用卡',), ('credit card',)),
+    (('还款',), ('payment due', 'minimum payment')),
+    (('银行',), ('bank',)),
+    (('账号', '账户'), ('account', 'username', 'login')),
+    (('密码',), ('password',)),
+    (('余额',), ('balance',)),
+    (('房贷', '贷款', '按揭'), ('mortgage', 'loan')),
+    (('利率',), ('interest rate',)),
+    (('保险', '保单'), ('insurance', 'policy')),
+    (('免赔额',), ('deductible',)),
+    (('责任险',), ('liability',)),
+    (('保费',), ('premium',)),
+    (('续保', '续期', '续签'), ('renewal', 'renew')),
+    (('捐款', '捐赠'), ('donation',)),
+    # housing and bills
+    (('公寓',), ('condo', 'condominium', 'apartment')),
+    (('房子', '房屋', '房产'), ('property', 'house', 'home')),
+    (('成交价', '房价', '买房', '购房'), ('purchase price',)),
+    (('交割', '交房', '过户'), ('closing', 'completion', 'possession')),
+    (('定金', '订金', '押金'), ('deposit',)),
+    (('租金', '月租', '房租'), ('rent',)),
+    (('租约', '租赁'), ('lease', 'tenancy')),
+    (('房东',), ('landlord',)),
+    (('租客', '房客'), ('tenant',)),
+    (('房产税', '地税'), ('property tax',)),
+    (('物业费', '管理费'), ('common expenses', 'maintenance fee')),
+    (('电费',), ('electricity', 'hydro')),
+    (('燃气', '煤气'), ('gas',)),
+    (('宽带', '网费'), ('internet',)),
+    (('话费', '手机'), ('mobile', 'phone')),
+    # travel and health
+    (('旅行', '旅游'), ('travel', 'trip', 'itinerary', 'flight')),
+    (('出入境',), ('travel', 'entry', 'exit', 'arrival', 'departure')),
+    (('机票', '航班'), ('flight', 'itinerary', 'ticket')),
+    (('起飞', '出发'), ('departure', 'departs')),
+    (('到达', '抵达'), ('arrival',)),
+    (('酒店',), ('hotel', 'booking', 'reservation')),
+    (('租车',), ('car rental',)),
+    (('体检',), ('medical exam', 'checkup')),
+    (('化验',), ('laboratory', 'lab result')),
+    (('牙科', '牙医'), ('dental', 'dentist')),
+    (('验光', '眼科'), ('eye exam', 'optometry')),
+    (('处方',), ('prescription',)),
+    # other
+    (('地址',), ('address',)),
+    (('遗嘱',), ('will', 'executor')),
+    (('执行人',), ('executor',)),
+    (('车辆', '汽车'), ('vehicle', 'car')),
+    (('保修',), ('warranty',)),
+    (('会员',), ('membership',)),
+)
+# Ordinary English words that would attach an unrelated Chinese term to a question.
+AMBIGUOUS_ENGLISH = {'will', 'pay', 'home', 'leave', 'bill', 'master', 'gas', 'car', 'son', 'house',
+                     'property', 'policy', 'rating', 'completion', 'possession', 'closing', 'entry',
+                     'exit', 'trip', 'phone', 'mobile', 'child', 'children', 'account', 'statement',
+                     'balance', 'income', 'checkup', 'born', 'issued', 'rent', 'college', 'login'}
+# Words that occur in almost every form; they identify a phrase in a question
+# but would only add noise as separate search terms.
+_GENERIC_ENGLISH = {'of', 'on', 'to', 'the', 'a', 'until', 'valid', 'date', 'number', 'card',
+                    'time', 'off', 'paid', 'place', 'port', 'units'}
+_CHINESE_TRIGGERS = [
+    (chinese, ' '.join(dict.fromkeys(word for term in english for word in term.split()
+                                     if word.lower() not in _GENERIC_ENGLISH)))
+    for chinese, english in GLOSSARY]
+_ENGLISH_TRIGGERS = [
+    (re.compile(r'(?i)(?<![A-Za-z])(?:' + '|'.join(re.escape(term) for term in english
+                                                   if term.lower() not in AMBIGUOUS_ENGLISH) + r')(?![A-Za-z])'),
+     ' '.join(chinese))
+    for chinese, english in GLOSSARY if any(term.lower() not in AMBIGUOUS_ENGLISH for term in english)]
 
 
 def luhn(number):
@@ -116,7 +237,9 @@ def extract_cards(documents, include_bank_accounts=False):
 
 
 def expand_query(query):
-    additions = [value for key, value in ALIASES.items() if key in query]
+    additions = [english for chinese, english in _CHINESE_TRIGGERS if any(term in query for term in chinese)]
+    additions.extend(chinese for pattern, chinese in _ENGLISH_TRIGGERS if pattern.search(query))
+    additions = list(dict.fromkeys(additions))
     return query + (' ' + ' '.join(additions) if additions else '')
 
 

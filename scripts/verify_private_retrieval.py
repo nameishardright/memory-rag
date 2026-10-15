@@ -83,7 +83,7 @@ def main():
         print(json.dumps(legacy(fixture, args.old_app), ensure_ascii=False))
         return 0
     sys.path.insert(0, str(CODE))
-    from mr_private import PrivateRAG, make_chunks, save_store, load_store
+    from mr_private import PrivateRAG, index_cache_path, make_chunks, save_store, load_store
     from mr_private_eval import evaluate, labels_sha256
     from mr_private_semantic import LocalEncoder
     encoder = LocalEncoder()
@@ -158,7 +158,7 @@ def main():
                 checkup = run_checkup(store, 'synthetic-test-password', collect=False, fresh_latency=True)
                 if not checkup['passed']:
                     raise ValueError('Actual-model encrypted checkup or native UI failed')
-                if not load_store(store.parent / 'corpus.semantic.personal.enc', 'synthetic-test-password')['complete']:
+                if not load_store(index_cache_path(store, 'personal', 'semantic'), 'synthetic-test-password')['complete']:
                     raise ValueError('Actual-model encrypted semantic index is incomplete')
         lexical = PrivateRAG(payload)
         lexical_result = evaluate(lexical, fixture)

@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from mr_index import BM25
-from mr_private import default_store, load_private_rag, load_store
+from mr_private import default_store, index_cache_path, load_private_rag, load_store
 from mr_private_facts import CARD_INTENT, compact_search, extract_cards
 
 
@@ -127,7 +127,7 @@ class PrivateMemoryApp:
     def signature(self):
         stat = self.store.stat()
         parts = [(stat.st_size, stat.st_mtime_ns)]
-        for path in (self.store.with_name(self.store.stem + '.semantic.personal.enc'),
+        for path in (index_cache_path(self.store, 'personal', 'semantic'),
                      self.store.parent / 'retrieval-settings.json'):
             try:
                 extra = path.stat(); parts.append((extra.st_size, extra.st_mtime_ns))
@@ -357,8 +357,14 @@ class PrivateMemoryApp:
                         labels = {value: key for key, value in self.scope_labels.items()}
                         mode_label = '关键词＋语义' if result['mode'] == 'hybrid' else '关键词'
                         hint = '；语义索引尚未就绪，可点击“准备语义检索”' if result['mode'] == 'bm25(fallback)' else ''
+                        route = result.get('route', {})
+                        searched = '＋'.join(labels.get(scope, scope) for scope in
+                                            [result['scope'], *route.get('also_searched', [])])
+                        if route.get('deferred_scope'):
+                            hint += '；“{}”较大，未自动加载，需要时请在范围里选择它'.format(
+                                labels.get(route['deferred_scope'], route['deferred_scope']))
                         self.status.set('找到 {} 条相关来源 · {} · {}{}。相关资料仍需核对人物、日期与事实。'.format(
-                            len(result['hits']), labels.get(result['scope'], result['scope']), mode_label, hint))
+                            len(result['hits']), searched, mode_label, hint))
                     self.search_button.configure(state='normal')
         except queue.Empty:
             pass

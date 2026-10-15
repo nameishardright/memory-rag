@@ -87,6 +87,40 @@ class PrivateUITests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_automatic_scope_reports_every_source_it_searched(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError:
+            self.skipTest('No native display available')
+        root.withdraw()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'corpus.enc'
+            docs = [{'id': 'resume', 'file': 'fictional-resume.txt', 'scope': 'personal',
+                     'text': 'Led the Harbor Scheduler project, cutting latency by 37%.'},
+                    {'id': 'readme', 'file': 'fictional-readme.md', 'scope': 'technical',
+                     'text': 'Harbor Scheduler project. Storage layer: SQLite.'}]
+            save_store(path, 'password', {'version': 1, 'documents': docs, 'chunks': make_chunks(docs),
+                       'updated_at': '2026-01-01', 'coverage': {'documents': 2, 'visible_files': 2}})
+            app = PrivateMemoryApp(root, path)
+            def until(check):
+                end = time.monotonic() + 10
+                while not check() and time.monotonic() < end:
+                    root.update(); time.sleep(.01)
+                self.assertTrue(check())
+            try:
+                app.password_entry.insert(0, 'password'); app.unlock(); until(lambda: app.rag is not None)
+                app.search_for('scheduler 项目 latency'); until(lambda: len(app.rows) == 2)
+                self.assertEqual({row['document_id'] for row in app.rows.values()}, {'resume', 'readme'})
+                self.assertIn('代码项目＋个人资料', app.status.get())
+                deferred = {'ok': True, 'mode': 'bm25', 'scope': 'personal', 'semantic_state': 'disabled',
+                            'answerability': 'no_evidence', 'hits': [],
+                            'route': {'scope': 'personal', 'deferred_scope': 'stock'}}
+                with patch('mr_private_ui.compact_search', return_value=deferred):
+                    app.search_for('stock options'); until(lambda: '未自动加载' in app.status.get())
+                self.assertIn('股票资料', app.status.get())
+            finally:
+                app.close()
+
     def test_unlock_card_lookup_and_stale_results_after_lock(self):
         try:
             root = tk.Tk()

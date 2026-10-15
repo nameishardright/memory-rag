@@ -23,9 +23,16 @@ quoted README text is navigation, not evidence of current maintenance or authors
 
 Dependencies, build outputs, raw logs, conversation dumps, database dumps, secret
 configuration files and labelled evaluation material are excluded. Original files
-and existing encrypted archives are retained. `private-policy.json` supports prefix
-rules for source directories; hard exclusions take precedence. Never repurpose
-evaluation material as facts or change goldens to obtain a passing result.
+and existing encrypted archives are retained. `private-policy.json` holds two kinds
+of rule: a path `prefix`, or a directory `component` found at any depth, optionally
+only `under` another directory and with shell-style wildcards. The first matching
+rule wins and hard exclusions take precedence. The shipped file excludes raw public
+filings and market-data caches inside stock research (`originals`, `sources`,
+`*-sources`, `inputs`, `px_cache`); written analysis stays in the stock scope. It
+also keeps backed-up agent session data under `.claude` out (tool output, subagent
+records, uploads, memory snapshots) while project memory notes there stay technical,
+and files Codex agent folders and the backed-up home tools (`家目录`) as technical. Never
+repurpose evaluation material as facts or change goldens to obtain a passing result.
 
 ## Retrieval and storage
 
@@ -34,9 +41,14 @@ Production imports write `corpus.enc` with personal documents and generation-spe
 root is replaced atomically last. A query decrypts other scopes only when requested.
 Each selected scope has independent BM25 statistics and an in-memory inverted index.
 The UI defaults to bounded rule-based **automatic** selection: pay and family questions
-use personal sources, code/project terms use technical sources, and stock terms use
-stock sources. Explicit choices always win. Unrecognized questions default to personal;
-automatic selection can be wrong and is not an exhaustive search across every source.
+use personal sources, code/project terms add technical sources, and stock terms add
+stock sources. Keyword routing is a guess, so personal sources are always searched as
+well and the two result lists are interleaved, routed scope first. A partition with
+more than `auto_scope_chunk_limit` chunks (200,000 unless `retrieval-settings.json`
+says otherwise) that is not yet loaded is not opened automatically; the result names
+it in `route.deferred_scope` and the user selects it explicitly. Explicit choices
+always win and are never widened. Automatic selection is not an exhaustive search
+across every source.
 Unchanged partitions are reused across root updates. Current and previous partition references are protected; authenticated generated partitions older than 24 hours may be retired. Source journals and original archives are retained.
 
 File-level top-k is exact: it chooses each document's highest-scoring passage without
@@ -53,13 +65,30 @@ Hybrid search retains BM25 and bilingual lexical expansion for exact words, name
 and identifiers. A fixed local `intfloat/multilingual-e5-small` encoder handles
 paraphrases and multilingual matches. Only the original question is embedded;
 expansion terms apply to BM25. Both legs reuse `mr_index.rrf_files` to fuse document
-ranks. Heading splitting and tokenization also reuse the work/study retrieval base.
+ranks; files that both legs found with the same fused score are ordered by the question
+embedding, and a file only the keywords found stays ahead of one only the vectors found. Heading
+splitting and Chinese segmentation reuse the work/study retrieval base.
 The public path and its plaintext vector cache are not changed or used for private data.
+
+Private BM25 has its own ASCII handling in `mr_private_index.py`, because personal
+records are mostly forms. Punctuation around a word is dropped, so `salary:`, a
+sentence-final `1997-06-25.` and the `2024` of `T4 2024.txt` match the plain word.
+Accented Latin letters and full-width forms are folded. A compound such as
+`SYN-DL-88231-40117` stays one word, so the exact identifier still ranks first; its
+parts are indexed as alternates that do not add to the passage length. In a question,
+the parts of a compound count only in a passage that contains all of them: a partial
+identifier or the same date with other separators is found, while an identifier that
+is nowhere returns nothing. A compound with a one-character part (`2029-1-5`, `4.62`)
+is matched only as a whole. `128,500.00` is also searchable as `128500`. The lexical
+cache records the tokenizer and is rebuilt when it changes.
 
 The CPU backend uses the model's published ONNX INT8 export at revision
 `614241f622f53c4eeff9890bdc4f31cfecc418b3`. Setup verifies the full model file against
 the pinned repository checksum; inference reads local files only. E5 uses `query:`
-and `passage:` prefixes. Long heading chunks use overlapping tokenizer-sized windows
+and `passage:` prefixes. The embedded passage begins with its folder and file name,
+which is often the only place a record's type or year appears; changing that text
+changed the encoder version, so earlier vector caches are rebuilt with `prepare`.
+Long heading chunks use overlapping tokenizer-sized windows
 without changing the original source chunks. Model weights contain no personal data
 and live outside OneDrive by default.
 
@@ -72,7 +101,12 @@ technical and history; the very large stock scope needs separate capacity planni
 
 Short previews are for scanning. Search also supplies up to 12,000 characters of
 original evidence, with multiple relevant passages, source hashes, dates and extraction
-warnings. The UI displays that evidence and still offers the complete original source.
+warnings. Inside a file longer than that budget, passages are ranked by keywords and,
+when the search has already loaded that scope's vectors, by the local model as well,
+so a question in one language still reaches the right passage of a file in another.
+Reading evidence never builds an index or loads the model by itself. The passages
+next to the best ones are included and everything is shown in document order.
+The UI displays that evidence and still offers the complete original source.
 Year/person/appointment and historical/current-state checks flag cases for review;
 they do not certify facts or resolve contradictions. All candidates remain unverified
 answers. OCR and automatic speech transcripts carry uncertainty warnings. This app
@@ -235,3 +269,41 @@ The fictional public regression command never unlocks a real corpus and denies
 socket connections during model inference. It also checks evidence at the end of a
 long named source and rejects a nonexistent named source. The optional installed
 source-collector integration tests use `MR_PRIVATE_SOURCE_TOOLS`; otherwise they skip.
+
+## Natural questions without source names
+
+Everyday questions name no file and are often asked in one language about a record
+written in another. Two fictional fixtures cover that case:
+`tests/fixtures/private_natural_dev.json` and `tests/fixtures/private_natural_holdout.json`.
+They contain form-like records, several years of the same slip that differ only by
+file name, long agreements whose facts sit deep inside, Chinese notarizations, and
+personal questions that contain a routing keyword. The holdout was frozen before the
+retrieval changes it accompanies and consumed once; both are regressions now.
+
+```powershell
+python scripts/compare_private_versions.py --baseline-code C:\code\previous-private-feature --regression-fixture tests/fixtures/private_natural_dev.json --regression-fixture tests/fixtures/private_natural_holdout.json --output .cache/compare/check.json
+```
+
+The script runs the baseline checkout and this checkout in separate processes on the
+same frozen questions, in BM25 and in hybrid with the local model, and reports gains,
+regressions and rank changes per question. Pass a new fixture with `--fixture`: if
+its questions are a holdout it is reserved before the first search. `--pad N` adds N
+generated fictional filler records (pay statements, bills, statements, receipts,
+notices over many months) to the personal scope. A real archive holds far more files
+than either leg returns, and rank fusion behaves differently there than in a fixture
+of a few dozen records, so check a ranking change with and without padding.
+Aggregates of the recorded runs are in `docs/private-natural-comparison.json`.
+
+Index sidecars carry a generation in their name (`corpus.lexical2.<scope>.enc`,
+`corpus.semantic2.<scope>.enc`). Code from before that generation keeps reading and
+writing its own files, so both can run on one store: a paired benchmark compares
+hybrid with hybrid once each side has prepared its vectors, and rolling back needs
+no rebuild. `mr_private_benchmark.py` reports `baseline_hybrid_actually_used` and
+does not call a comparison a hybrid improvement when the baseline fell back to
+keywords.
+
+These fixtures were written by the same agent as the changes they measure. They show
+that the listed failure shapes are handled; they do not measure accuracy on a real
+corpus, independently collected questions, refusal, or final answers. On both sets
+hybrid ranks the right file first less often than BM25 does, so the weighting of the
+two legs is still open and needs a fresh set before it is changed.
