@@ -203,6 +203,13 @@ class BM25:
 
     _TOK_CACHE = {}   # md5 → tokens:热更重建时只切新块(2026-09-08 实测 1816 块全切要 ~10s,占重建时间大头)
 
+    @classmethod
+    def retain(cls, keys):
+        """分词缓存只留当前语料的块(重建时调)。🔴 别按「这一个索引的块数」清:按源分建后最后建的 PDF 子索引最小,
+        缓存总量必超它的 4 倍,每次重建都被清空,热更退回全量重切(2026-10-19 实测重建 ~20s 都在 jieba)。"""
+        for key in [k for k in cls._TOK_CACHE if k not in keys]:
+            del cls._TOK_CACHE[key]
+
     def __init__(self, chunks):
         self.chunks = chunks
         cache = BM25._TOK_CACHE
@@ -214,8 +221,6 @@ class BM25:
                 # and cache. Only the stock lexical leg needs separate fields.
                 cache[key] = tokenize(_index_text(c)) + tokenize(mr_stock.index_terms(c))
             self.docs.append(cache[key])
-        if len(cache) > 4 * max(1, len(chunks)):   # 语料反复增删时别无限涨
-            cache.clear()
         self.N = len(self.docs)
         self.avgdl = sum(map(len, self.docs)) / max(1, self.N)
         self.tf, self.df = [], {}

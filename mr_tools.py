@@ -98,6 +98,7 @@ def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     chunks = mr_corpus.load_chunks()
     _STATE["chunks"] = chunks
+    mr_index.BM25.retain({(c.get("source"), c["md5"]) for c in chunks})   # 语料反复增删时别无限涨
     # Observability only: never use gold labels to filter, score or classify a hit.
     # Warn again after each changed corpus, including startup; failures do not
     # make everyday retrieval unavailable. Evaluation retains its strict gate.
