@@ -43,6 +43,10 @@ def work_default():
 # source=None 时查哪些源;work 是否并入默认检索按金标对照定(开关两态都跑)
 DEFAULT_SOURCES = NOTE_SOURCES | ({"work"} if work_default() else frozenset())
 PARAGRAPH_SOURCES = NOTE_SOURCES | {"work"}
+# 按需装载的源(2026-10-19):进程启动不装,第一次 source=<它> 的查询才装(mr_tools._ensure 的 need)。
+# stock 占全库 65% 的块(9030/13983),09-16 建库评测之后 33 天真实查询 0 次;装上后打分仍用全体非 PDF 统计,结果与启动全装逐条一致。
+# 默认检索的源不能按需(source=None 不会触发装载);MR_LAZY_SOURCES="" 恢复启动全装。load_chunks()/signature() 不传 skip 仍是全量。
+LAZY_SOURCES = frozenset(s.strip() for s in os.environ.get("MR_LAZY_SOURCES", "stock").split(",") if s.strip()) - DEFAULT_SOURCES
 
 
 def _scan(src):
@@ -232,13 +236,16 @@ def load_pdf_chunks():
     return chunks
 
 
-def signature():
-    """语料指纹:所有源目录里 md 的 (名, mtime, size)+ 开着的 PDF 源 —— 变了就该重建索引(热更用)。"""
+def signature(skip=frozenset()):
+    """语料指纹:所有源目录里 md 的 (名, mtime, size)+ 开着的 PDF 源 —— 变了就该重建索引(热更用)。
+    skip = 还没装的按需源:它们的文件变了不触发重建(stock 每天 06:40 整批重写 md)。"""
     parts = ["chunker|%s|%s|%d|%d" % (CHUNKER_VERSION, CHUNK_STRATEGY, MAX_CHUNK, OVERLAP)]
     if os.path.isfile(CORPUS_POLICY):
         st = os.stat(CORPUS_POLICY)
         parts.append("policy|%s|%d|%d" % (CORPUS_POLICY, st.st_mtime_ns, st.st_size))
     for src in SOURCES:
+        if src["key"] in skip:
+            continue
         for fn, _path, st in _scan(src):
             parts.append("%s|%s|%d|%d" % (src["key"], fn, st.st_mtime_ns, st.st_size))
     if pdf_enabled():
@@ -376,10 +383,13 @@ def _hard_wrap(head, body, strategy=None):
     return out
 
 
-def load_chunks():
+def load_chunks(skip=frozenset()):
+    """skip = 不装的源(按需源还没被查过);块的先后仍按 SOURCES 顺序,装上后与全量装载完全相同。"""
     chunks = []
     purposes = load_purposes()
     for src in SOURCES:
+        if src["key"] in skip:
+            continue
         d = src["dir"]
         if not os.path.isdir(d):
             print("[corpus] 缺目录: %s" % d, file=sys.stderr)

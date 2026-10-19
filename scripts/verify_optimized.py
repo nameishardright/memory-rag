@@ -59,8 +59,8 @@ def main():
     for src in mr_corpus.SOURCES:src["dir"]=str(args.frozen/src["key"])
     mr_corpus.PDF_CACHE=str(args.models/"pdf-text")
     chunks=mr_corpus.load_chunks()
-    mr_corpus.load_chunks=lambda:chunks
-    mr_corpus.signature=lambda:"frozen-final"
+    mr_corpus.load_chunks=lambda **_: chunks
+    mr_corpus.signature=lambda **_: "frozen-final"
     golden={name:json.loads(path.read_text(encoding="utf-8")) for name,path in {
         "notes":CODE/"golden/golden_queries.json","evidence":args.evidence,"negative":CODE/"golden/golden_negative.json",
         "original_evidence":CODE/"golden/golden_evidence.json","stock":CODE/"golden/golden_stock.json",
@@ -112,12 +112,12 @@ def main():
     old_pdf=before.corpus.load_pdf_chunks()
     report["checks"]["pdf_chunk_boundaries_preserved"]=[c["md5"] for c in pdf_chunks]==[c["md5"] for c in old_pdf]
     mr_tools._STATE.clear()
-    mr_corpus.load_chunks=lambda:pdf_chunks
-    mr_corpus.signature=lambda:"frozen-pdf"
+    mr_corpus.load_chunks=lambda **_: pdf_chunks
+    mr_corpus.signature=lambda **_: "frozen-pdf"
     run("pdf_m3",golden["pdf"],pdf_chunks,model="bge-m3",rerank=False)
     run("pdf_gate",golden["pdf"],pdf_chunks,model="bge-m3")
-    before.corpus.load_chunks=lambda:old_pdf
-    before.corpus.signature=lambda:"frozen-old-pdf"
+    before.corpus.load_chunks=lambda **_: old_pdf
+    before.corpus.signature=lambda **_: "frozen-old-pdf"
     before.tools.LOG_ON=False
     # Share the source-identical PDF vector object, without sharing the gate.
     before.index.VecIndex=lambda *a,**kw:mr_tools._STATE["vec"]

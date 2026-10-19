@@ -37,7 +37,7 @@ class PdfVectorScopeTests(unittest.TestCase):
         self.enterContext(patch.object(mr_tools,'_STATE',{}))
         self.enterContext(patch.object(mr_tools,'LOG_ON',False))
         self.enterContext(patch.object(mr_corpus,'signature',return_value='frozen'))
-        self.enterContext(patch.object(mr_corpus,'load_chunks',side_effect=lambda:self.chunks))
+        self.enterContext(patch.object(mr_corpus,'load_chunks',side_effect=lambda **_:self.chunks))
 
     def test_subset_matches_full_masked_scores_and_returns_global_indices(self):
         spec=mr_index.model_spec('bge-m3')

@@ -94,9 +94,15 @@ The actual model/cache remains shared with the ordinary VecIndex implementation.
         return [(self.idx[local], score) for local, score in self.vector.search(query, topk=topk, mask=local_mask)]
 
 
+def _lazy_skip():
+    """还没装的按需源(mr_corpus.LAZY_SOURCES);查询带 need 时才装,装过的整个进程都留着。"""
+    return mr_corpus.LAZY_SOURCES - _STATE.get("lazy_on", frozenset())
+
+
 def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
-    chunks = mr_corpus.load_chunks()
+    skip = _lazy_skip()
+    chunks = mr_corpus.load_chunks(skip=skip)
     _STATE["chunks"] = chunks
     mr_index.BM25.retain({(c.get("source"), c["md5"]) for c in chunks})   # 语料反复增删时别无限涨
     # Observability only: never use gold labels to filter, score or classify a hit.
@@ -135,21 +141,26 @@ def _rebuild(reason):
         _STATE["vecs"][slug] = (_SubVec(chunks, pdf_idx, model=v._model, spec=v.spec)
                                  if getattr(v, 'scope', None) == 'pdf'
                                  else mr_index.VecIndex(chunks, model=v._model, spec=v.spec))
-    _STATE["sig"] = mr_corpus.signature()
-    print("[reload] %s:语料 %d→%d 块" % (reason, old_n, len(chunks)), file=sys.stderr)
+    _STATE["sig"] = mr_corpus.signature(skip=skip)
+    print("[reload] %s:语料 %d→%d 块%s" % (reason, old_n, len(chunks),
+          (",按需源未装:" + ",".join(sorted(skip))) if skip else ""), file=sys.stderr)
 
 
-def _ensure(mode, model=None, vec_scope=None):
+def _ensure(mode, model=None, vec_scope=None, need=None):
     """🔴 热更(2026-09-08):原来进程启动装一次索引就不看文件了,会话里新写的笔记查不到,要重启会话——
-    现在每次查询前(最多每 RELOAD_SEC 秒一次)比对语料指纹,变了就重建;向量层按 md5 增量,只多算新块。"""
+    现在每次查询前(最多每 RELOAD_SEC 秒一次)比对语料指纹,变了就重建;向量层按 md5 增量,只多算新块。
+    need = 这次要用的源(str 或集合):其中还没装的按需源现在装(整库重建一次,向量走 md5 缓存不重算)。"""
     with _LOCK:
         now = time.time()
-        if "chunks" not in _STATE:
-            _rebuild("首次加载")
+        fresh = ({need} if isinstance(need, str) else set(need or ())) & _lazy_skip()
+        if fresh:
+            _STATE["lazy_on"] = _STATE.get("lazy_on", frozenset()) | fresh
+        if "chunks" not in _STATE or fresh:
+            _rebuild("首次加载" if "chunks" not in _STATE else "按需装载 " + ",".join(sorted(fresh)))
             _STATE["sig_at"] = now
         elif now - _STATE.get("sig_at", 0) >= RELOAD_SEC:
             _STATE["sig_at"] = now
-            if mr_corpus.signature() != _STATE.get("sig"):
+            if mr_corpus.signature(skip=_lazy_skip()) != _STATE.get("sig"):
                 _rebuild("检测到文件变化")
         if mode in ("vec", "hybrid"):
             # 一键切换:每个模型各建各的向量层,按 slug 存在 _STATE["vecs"],切回来不重算;没权重的模型 available=False,查询时回退 bm25
@@ -217,7 +228,7 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         raise ValueError("stock_filter requires source=stock")
     if model is None and source == "pdf":
         model = os.environ.get("MR_EMBED_MODEL_PDF") or None
-    st = _ensure(mode, model, vec_scope='pdf') if source == 'pdf' else _ensure(mode, model)
+    st = _ensure(mode, model, vec_scope='pdf') if source == 'pdf' else _ensure(mode, model, need=source)
     spec = mr_index.model_spec(model)
     chunks, note, used_model = st["chunks"], "", None
     if source:
@@ -542,7 +553,7 @@ REGISTRY = {
         "fn": memory_search,
         "desc": "查 zihao 以前踩过的坑/定过的原则/记过的事实。排查问题、写方案、做设计决策前先调它:"
                 "输入自然语言问题,返回三层语料里最相关的片段——case(实战学习笔记)/book(两本 agent 教材章节笔记)/"
-                "mem(个人长期记忆);股票历史判断用 source=stock;教材原文页用 source=pdf;"
+                "mem(个人长期记忆);股票历史判断用 source=stock(按需装载,本进程第一次查要多等几秒);教材原文页用 source=pdf;"
                 "海马云工作笔记(方案/报告/接入/jira-drafts/观澜 kb 等,file 是相对路径)用 source=work。默认不查 stock/PDF。查不到返回空 hits,也是正常结果;"
                 "股票单标的+单日期/周期问题自动按卡片字段匹配；比较多日期/周期时保持宽搜，可用 stock_filter 明确范围。stock.card_date 是卡片日期，不保证正文每个价格都发生在该日。"
                 "confidence 是检索相关性标签,不是答案正确率:未启用 cross-encoder 时由词法/语义分数门确定,启用时由 gate 分数确定。"

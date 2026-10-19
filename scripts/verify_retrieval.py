@@ -118,8 +118,8 @@ def main():
         fingerprint = hashlib.sha256("\n".join(c["source"] + "/" + c["md5"] for c in rows).encode()).hexdigest()
         for stack in (before, after):
             stack.tools._STATE.clear()
-            stack.corpus.load_chunks = lambda: rows
-            stack.corpus.signature = lambda: fingerprint
+            stack.corpus.load_chunks = lambda **_: rows
+            stack.corpus.signature = lambda **_: fingerprint
         return fingerprint
 
     report["corpus_sha256"] = freeze(chunks)

@@ -104,8 +104,8 @@ def main():
     mr_corpus.CORPUS_POLICY = str(args.frozen / "corpus-policy.json")
     mr_tools.LOG_ON = False
     chunks = mr_corpus.load_chunks()
-    mr_corpus.load_chunks = lambda: chunks
-    mr_corpus.signature = lambda: "sealed-corpus"
+    mr_corpus.load_chunks = lambda **_: chunks
+    mr_corpus.signature = lambda **_: "sealed-corpus"
     baseline_search,baseline_chunks = None,None
     if args.baseline:
         from scripts.verify_retrieval import load_stack
@@ -115,8 +115,8 @@ def main():
         before.corpus.CORPUS_POLICY = str(args.frozen/"corpus-policy.json")
         before.tools.LOG_ON = False
         baseline_chunks = before.corpus.load_chunks()
-        before.corpus.load_chunks = lambda:baseline_chunks
-        before.corpus.signature = lambda:"sealed-baseline-corpus"
+        before.corpus.load_chunks = lambda **_: baseline_chunks
+        before.corpus.signature = lambda **_: "sealed-baseline-corpus"
         baseline_search = before.tools.memory_search
     result = evaluate_once(args.dataset,args.manifest,args.output,mr_tools.memory_search,chunks=chunks,
                            baseline_search=baseline_search,baseline_chunks=baseline_chunks)

@@ -80,8 +80,8 @@ def main():
         chunks = stack.corpus.load_chunks()
         mr_eval.require_clean_corpus(chunks, list(goldens.values()))
         corpus_sha = hashlib.sha256(json.dumps([(c["source"],c["md5"],c.get("purpose")) for c in chunks]).encode()).hexdigest()
-        stack.corpus.load_chunks = lambda: chunks
-        stack.corpus.signature = lambda: corpus_sha
+        stack.corpus.load_chunks = lambda **_: chunks
+        stack.corpus.signature = lambda **_: corpus_sha
         stack.tools._STATE.clear()
         return chunks, corpus_sha
 

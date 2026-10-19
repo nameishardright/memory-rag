@@ -38,6 +38,11 @@ def cmd_stats():
     for k, files in sorted(per.items()):
         n = sum(1 for c in st["chunks"] if c["source"] == k)
         print("  %-5s %3d 文件 %4d chunks" % (k, len(files), n))
+    for k in sorted(mr_tools._lazy_skip()):
+        src = next((s for s in mr_corpus.SOURCES if s["key"] == k), None)
+        if src:
+            print("  %-5s %3d 文件  未装载(按需:本进程第一次 source=%s 时装;MR_LAZY_SOURCES 控制)" % (
+                k, len(mr_corpus.source_files(src)), k))
     print("分词器: %s" % mr_index.TOKENIZER)
     v = st.get("vec")
     cur = mr_index.model_spec()
@@ -80,7 +85,8 @@ def cmd_eval(mode, verbose, golden_path=None, model=None, rerank=None):
     mr_eval.validate_labels(golden)
     # Audit every active source and every local golden before warming models or
     # emitting retrieval scores, even when this run queries only one source.
-    chunks = mr_tools._ensure("bm25")["chunks"]
+    # On-demand sources (stock) are loaded first so the audit covers them too.
+    chunks = mr_tools._ensure("bm25", need=mr_corpus.LAZY_SOURCES)["chunks"]
     audit = mr_eval.require_clean_corpus(chunks, mr_eval.load_goldens(os.path.join(BASE, "golden"), golden_path))
     print("CORPUS_AUDIT_OK: %d 块 / %d 个原问句" % (audit["scanned_chunks"], audit["question_count"]))
     print("金标 %d 条(draft=%s) | 模型 %s | 重排 %s | 检索评测,不是最终答案正确率" % (
@@ -165,7 +171,7 @@ def cmd_setup_vec():
         print("pip 失败 rc=%d,检查网络/镜像" % rc)
         return
     cmd_pull_model(mr_index.model_spec()["key"])
-    st = mr_tools._ensure("vec")
+    st = mr_tools._ensure("vec", need=mr_corpus.LAZY_SOURCES)   # 按需源也预算好,首查只读缓存
     v = st["vec"]
     print("向量层: %s" % ("OK,已建 %d 条 embedding 缓存" % len(st["chunks"]) if v.available else "失败 — %s" % v.err))
 

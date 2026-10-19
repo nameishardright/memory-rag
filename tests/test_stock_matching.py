@@ -96,7 +96,7 @@ class StockMatchingTests(unittest.TestCase):
     def test_both_hybrid_legs_receive_the_same_identity_mask(self):
         self.card("card_UBER#mid_2026-09-17.md")
         self.card("card_UBER#short_2026-09-17.md")
-        state = mr_tools._ensure("bm25")
+        state = mr_tools._ensure("bm25", need="stock")
         wanted = {i for i,c in enumerate(state["chunks"]) if "#mid_" in c["file"]}
         masks = []
         def vector_search(query, topk, mask):

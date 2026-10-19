@@ -32,8 +32,8 @@ def main():
     for src in mr_corpus.SOURCES:
         src["dir"]=str(args.frozen/src["key"])
     chunks=mr_corpus.load_chunks()
-    mr_corpus.load_chunks=lambda:chunks
-    mr_corpus.signature=lambda:"frozen-latency"
+    mr_corpus.load_chunks=lambda **_: chunks
+    mr_corpus.signature=lambda **_: "frozen-latency"
     positives=json.loads((CODE/"golden/golden_queries.json").read_text(encoding="utf-8"))["queries"]
     negatives=json.loads((CODE/"golden/golden_negative.json").read_text(encoding="utf-8"))["queries"]
     cases=[("p%02d"%(i+1),positives[i]["q"]) for i in (0,1,3,7,8,13,18,22)]
