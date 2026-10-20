@@ -6,3 +6,10 @@ __pycache__/
 golden/golden_stock.json
 # Full passage labels and held-out questions may identify private source material.
 golden/private/
+
+# Private archives, benchmark labels/results, and per-machine retrieval settings.
+*.enc
+*.enc.*
+personal-checkup/
+private-evaluation/
+retrieval-settings.json

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Personal evidence is the default. Projects, stocks and history are separate sources. Exclusions affect retrieval and collection, not original files or existing encrypted archives. A rule names either a path prefix or a directory component found at any depth (optionally only under another directory); the first matching rule wins.",
+  "rules": [
+    {"component": "originals", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
+    {"component": "sources", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
+    {"component": "*-sources", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
+    {"component": "inputs", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
+    {"component": "px_cache", "scope": "exclude", "reason": "generated_market_data_cache"},
+    {"component": "memory", "under": ".claude", "scope": "technical", "reason": "agent_memory"},
+    {"component": "*", "under": ".claude", "scope": "exclude", "reason": "agent_session_data"},
+    {"component": ".codex*", "scope": "technical", "reason": "agent_configuration"},
+    {"component": "家目录", "scope": "technical", "reason": "home_tools_and_projects"},
+    {"prefix": "06_代码项目", "scope": "technical", "reason": "old_projects_on_demand"},
+    {"prefix": "90_历史归档", "scope": "history", "purpose": "historical", "reason": "historical_documents_on_demand"}
+  ]
+}

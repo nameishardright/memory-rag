@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "boundary": "Agent-authored synthetic event holdout frozen before the first retrieval; not real private accuracy or independent human evaluation.",
+  "documents": [
+    {"id": "holdout-pay", "file": "fictional-employment-confirmation.txt", "scope": "personal", "text": "# Employment confirmation\nEmployee: Morgan Fiction.\nEmployer: Cedar Labs.\nAnnual remuneration: CAD 84500.\nEffective date: 2025-02-01."},
+    {"id": "holdout-pay-survey", "file": "fictional-market-survey.txt", "scope": "personal", "text": "# Salary market survey\nTypical annual salary at Cedar Labs: CAD 120000.\nThis is an industry estimate, not Morgan Fiction's pay."},
+    {"id": "holdout-old-pay", "file": "fictional-old-contract.txt", "scope": "personal", "purpose": "historical", "text": "# Previous employment\nEmployee: Morgan Fiction.\nEmployer: Pine Works.\nAnnual remuneration: CAD 61000.\nThis employment ended on 2022-07-31."},
+    {"id": "holdout-flight", "file": "fictional-ticket.txt", "scope": "personal", "text": "# Flight reservation\nPassenger: Morgan Fiction.\nOutbound flight: Vancouver YVR to Ottawa YOW.\nScheduled departure: 2025-09-17 at 08:40.\nReservation code: SYN-VOW-731."},
+    {"id": "holdout-lease", "file": "fictional-rental-contract.txt", "scope": "personal", "text": "# Rental agreement commencement\nTenant: Morgan Fiction.\nLease begins: 2024-10-01.\n\n# Rental agreement expiration\nLease expires: 2025-09-30.\nPremises: 71 Fictional Birch Lane."},
+    {"id": "holdout-degree", "file": "fictional-graduation.txt", "scope": "personal", "text": "# Graduation certificate\nStudent: Morgan Fiction.\nQualification awarded: Bachelor of Engineering.\nAwarding institution: Fictional West College.\nGraduation date: 2019-06-21."},
+    {"id": "holdout-mother", "file": "fictional-family-record.txt", "scope": "personal", "text": "# Family record\nMother: Lin Fiction.\nHer birthplace: Suzhou.\nNo date of birth is recorded."},
+    {"id": "holdout-passport", "file": "fictional-passport.txt", "scope": "personal", "text": "# Passport record\nHolder: Morgan Fiction.\nDocument identifier: SYN-X92003.\nExpires on: 2032-11-14.\nDate of birth: 1991-02-08."},
+    {"id": "holdout-permit", "file": "fictional-permit.txt", "scope": "personal", "text": "# Residence permit\nHolder: Morgan Fiction.\nAuthorization valid from: 2023-05-10.\nAuthorization valid until: 2026-05-09.\nReference: SYN-RP-420."},
+    {"id": "holdout-tax", "file": "fictional-tax.txt", "scope": "personal", "text": "# Tax assessment\nTaxpayer: Morgan Fiction.\nAssessment year: 2023.\nAmount payable: CAD 315."},
+    {"id": "holdout-ocr", "file": "fictional-scanned-note.txt", "scope": "personal", "method": "image_ocr", "warnings": ["synthetic_uncertain_ocr"], "text": "# Scanned travel receipt\nReservation: SYN-VOW-731.\nPrinted total: CAD 286."},
+    {"id": "holdout-code", "file": "fictional-project-design.md", "scope": "technical", "text": "# GitHub project design\nThe fictional scheduler uses a priority queue for deadlines.\nThe persistence layer is PostgreSQL.\nThis project material belongs to the technical source."},
+    {"id": "holdout-stock", "file": "fictional-equity-note.md", "scope": "stock", "text": "# Stock research\nFictional ticker SYNQ.\nQuarterly revenue: USD 7 million.\nResearch date: 2025-08-04."},
+    {"id": "holdout-backup", "file": "fictional-backup.md", "scope": "history", "purpose": "historical", "text": "# Historical backup\nAn obsolete draft mentions Pine Works.\nNo current employment or salary is established."}
+  ],
+  "questions": [
+    {"id": "h-pay-en", "case_group": "holdout-pay-event", "split": "holdout", "query": "How much money do I make in a year according to my employment confirmation?", "scope": "auto", "expected_documents": ["holdout-pay"], "required_text": ["CAD 84500", "Cedar Labs"]},
+    {"id": "h-pay-zh", "case_group": "holdout-pay-event", "split": "holdout", "query": "我的雇主和年薪分别是什么？", "scope": "auto", "expected_documents": ["holdout-pay"], "required_text": ["Cedar Labs", "CAD 84500"]},
+    {"id": "h-flight-zh", "case_group": "holdout-flight-event", "split": "holdout", "query": "我去渥太华的航班从哪里出发？", "scope": "personal", "expected_documents": ["holdout-flight"], "required_text": ["Vancouver", "Ottawa"]},
+    {"id": "h-flight-en", "case_group": "holdout-flight-event", "split": "holdout", "query": "What time does my flight leave Vancouver?", "scope": "personal", "expected_documents": ["holdout-flight"], "required_text": ["2025-09-17", "08:40"]},
+    {"id": "h-lease", "case_group": "holdout-lease-event", "split": "holdout", "query": "When does my rental agreement begin and expire?", "scope": "personal", "expected_documents": ["holdout-lease"], "required_text": ["2024-10-01", "2025-09-30"]},
+    {"id": "h-degree-zh", "case_group": "holdout-degree-event", "split": "holdout", "query": "我取得了什么学位，什么时候毕业？", "scope": "personal", "expected_documents": ["holdout-degree"], "required_text": ["Bachelor of Engineering", "2019-06-21"]},
+    {"id": "h-mother", "case_group": "holdout-family-event", "split": "holdout", "query": "Where was my mother born?", "scope": "personal", "expected_documents": ["holdout-mother"], "required_text": ["Lin Fiction", "Suzhou"]},
+    {"id": "h-passport-zh", "case_group": "holdout-passport-event", "split": "holdout", "query": "我的护照有效期到哪一天？", "scope": "personal", "expected_documents": ["holdout-passport"], "required_text": ["2032-11-14"]},
+    {"id": "h-passport-id", "case_group": "holdout-passport-event", "split": "holdout", "query": "SYN-X92003", "scope": "personal", "expected_documents": ["holdout-passport"], "required_text": ["Morgan Fiction", "2032-11-14"]},
+    {"id": "h-permit", "case_group": "holdout-permit-event", "split": "holdout", "query": "What are the beginning and ending dates of my residence authorization?", "scope": "personal", "expected_documents": ["holdout-permit"], "required_text": ["2023-05-10", "2026-05-09"]},
+    {"id": "h-tax", "case_group": "holdout-tax-event", "split": "holdout", "query": "How much tax do I owe for 2023?", "scope": "personal", "expected_documents": ["holdout-tax"], "required_text": ["2023", "CAD 315"]},
+    {"id": "h-code", "case_group": "holdout-code-event", "split": "holdout", "query": "What database does my GitHub scheduler project use?", "scope": "auto", "expected_documents": ["holdout-code"], "required_text": ["PostgreSQL"]},
+    {"id": "h-stock", "case_group": "holdout-stock-event", "split": "holdout", "query": "What revenue is reported in my SYNQ stock research?", "scope": "auto", "expected_documents": ["holdout-stock"], "required_text": ["USD 7 million", "2025-08-04"]},
+    {"id": "h-backup", "case_group": "holdout-backup-event", "split": "holdout", "query": "Which employer was mentioned in the historical backup?", "scope": "auto", "expected_documents": ["holdout-backup"], "required_text": ["Pine Works"]},
+    {"id": "h-negative-birth", "case_group": "holdout-family-event", "split": "holdout", "positive": false, "query": "What is my mother's date of birth?", "scope": "personal"},
+    {"id": "h-negative-tax-year", "case_group": "holdout-tax-event", "split": "holdout", "positive": false, "query": "What is my 2027 tax balance?", "scope": "personal"},
+    {"id": "h-negative-appointment", "case_group": "holdout-passport-event", "split": "holdout", "positive": false, "query": "When is my passport renewal appointment?", "scope": "personal"},
+    {"id": "h-negative-unknown", "case_group": "holdout-unknown-event", "split": "holdout", "positive": false, "query": "SYN-Absent-QX992121", "scope": "personal"}
+  ]
+}
