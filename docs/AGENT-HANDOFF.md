@@ -1,14 +1,16 @@
 # OneDrive 私有 RAG：agent 接手说明
 
-更新日期：2026-10-03。通用代码在 [`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus) 分支。最后一次已评测的检索代码提交是 `a87c8b6`；文档更新后的完整部署提交与文件 SHA-256 以本机 `app-manifest.json` 为准。main 未合并此模块。
+更新日期：2026-10-21。私有模块已合入 main（`5db082b`，PR #1）。OneDrive 里运行的检索代码是 `5db082b`，2026-10-21 部署；完整部署提交与文件 SHA-256 以本机 `app-manifest.json` 为准。
 
 先读本页和[变更记录](CHANGELOG-RAG.md)，再按[私有版使用指南](private-corpus.md)操作。这些文件只包含通用实现、操作路径和汇总结果。
 
-## 未部署的后续分支（2026-10-11）
+## 2026-10-21 部署的自然问法改动
 
-`fix/private-natural-retrieval` 基于 `2bb85d1`，针对不带资料名的日常问法。改动、修改前后对照和部署步骤见[变更记录](CHANGELOG-RAG.md)第一节。本页其余内容描述的仍是 OneDrive 里正在运行的 `2bb85d1`。
+`fix/private-natural-retrieval`（基于 `2bb85d1`，针对不带资料名的日常问法）已合入 main 并部署。改动、修改前后对照和真实资料回归见[变更记录](CHANGELOG-RAG.md)前三节。本页后面的位置、评测记录和回退流程最初按 `2bb85d1` 写成，仍然适用。
 
-合入并部署后，下面几处会变：
+资料源电脑还要做一件事：先把收集器 `tools` 目录里的 `mr_private_policy.py` 和 `private-policy.json` 换成 `app` 里的部署版，再运行 Start-Updates。两处不一致会让收集和检索用不同的排除规则；策略哈希变了，下一次导入会重写全部分区。
+
+与 `2bb85d1` 相比：
 
 - 自动范围路由到 technical、stock 或 history 时同时查 personal，结果交替合并；尚未加载的大分区不自动打开，返回里带 `route.deferred_scope`。手动选择的范围不受影响。
 - 私有版的关键词分词改用 `mr_private_index.tokenize`，不再直接用 `mr_index.tokenize`；`mr_index.rrf_files` 仍然复用，工作学习版没有改动。
@@ -16,7 +18,7 @@
 - 索引缓存换了文件名（`corpus.lexical2.*.enc`、`corpus.semantic2.*.enc`），旧代码的缓存不读不改；新代码的向量要按范围 prepare 一次，关键词缓存自动建。
 - 默认策略排除股票研究目录下的原始公告和行情缓存，下一次导入会重写分区。
 
-这批改动是在另一台没有资料库、也没有口令的电脑上做的，只跑过虚构题集：单元检查 236 项、四份虚构题集 85 个正例的本地 E5 回归、新旧代码的成对对照，以及加 600 份虚构干扰记录的对照（`--pad 600`）。提交前由另一个 agent 独立复审过一轮，指出的问题已修并各有单元检查。真实资料上的回归要在资料源电脑上完成后才能部署：
+这批改动是在另一台没有资料库、也没有口令的电脑上做的，只跑过虚构题集：单元检查 236 项、四份虚构题集 85 个正例的本地 E5 回归、新旧代码的成对对照，以及加 600 份虚构干扰记录的对照（`--pad 600`）。提交前由另一个 agent 独立复审过一轮，指出的问题已修并各有单元检查。真实资料回归 2026-10-21 在另一台电脑上用 OneDrive 资料库的本地副本完成，之后才部署，数字见变更记录。以后改检索代码仍按这个顺序检查：
 
 ```powershell
 py -3.12 -m unittest discover -s tests
@@ -33,7 +35,7 @@ py -3.12 mr_private_benchmark.py --store <corpus.enc> --labels <已有的加密�
 
 | 位置 | 用途 |
 |---|---|
-| `%USERPROFILE%\projects\memory-rag` | 通用源码 checkout，分支为 `feat/encrypted-personal-corpus` |
+| `%USERPROFILE%\projects\memory-rag` | 通用源码 checkout，分支为 `main` |
 | `%OneDrive%\_Private-Memory-RAG\app` | 私有桌面应用实际加载的 Python 文件 |
 | `%OneDrive%\_Private-Memory-RAG\corpus.enc` | 已加密的资料库 |
 | `%OneDrive%\_Private-Memory-RAG\app-manifest.json` | 部署提交、应用文件哈希、模型版本和验收结果 |
@@ -96,7 +98,7 @@ git diff --check
 
 ## 部署和回退
 
-本次代码部署保留每个被替换文件的原件，备份位于上述本地交付目录内的 `deployment-backup-*`；`deployment-results.json` 记录完整备份路径、部署哈希和保护文件一致性。更新应用代码与文档时，不重新导入或重新加密资料库。
+2026-10-21 的部署备份在 OneDrive 的 `updates\20261021\backup-2bb85d1`：被替换的 app 文件、`app-manifest.json`、根目录文档的原件和 `backup-manifest.json` 哈希清单。2026-10-03 的部署保留每个被替换文件的原件，备份位于上述本地交付目录内的 `deployment-backup-*`；`deployment-results.json` 记录完整备份路径、部署哈希和保护文件一致性。更新应用代码与文档时，不重新导入或重新加密资料库。
 
 回退时读取该次备份清单，恢复原来存在的应用/文档文件；新增加的文件按清单移出到恢复目录。备份的 `app-manifest.json` 一起恢复。操作后核对哈希并重新打开应用。代码回退不回滚 `corpus.enc`、加密索引、冻结标签或 consumed 标记。
 

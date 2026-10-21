@@ -2,6 +2,10 @@
   "version": 1,
   "description": "Personal evidence is the default. Projects, stocks and history are separate sources. Exclusions affect retrieval and collection, not original files or existing encrypted archives. A rule names either a path prefix or a directory component found at any depth (optionally only under another directory); the first matching rule wins.",
   "rules": [
+    {"component": "Agent学习计划", "scope": "technical", "reason": "ai_learning_material"},
+    {"component": "Claude_API产品计划", "scope": "technical", "reason": "ai_learning_material"},
+    {"component": "agent学习", "scope": "technical", "reason": "ai_learning_material"},
+    {"component": "CLI新手课", "scope": "technical", "reason": "ai_learning_material"},
     {"component": "originals", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
     {"component": "sources", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
     {"component": "*-sources", "under": "股票分析", "scope": "exclude", "reason": "raw_public_filing"},
