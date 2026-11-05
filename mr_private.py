@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 import datetime as dt
 import getpass
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -56,6 +57,10 @@ NO_HEADING_SPLIT_NAMES = {
 }
 MARKDOWN_METHODS = {"project_catalogue", "curated_memory", "onenote_com"}
 PRIVATE_CHUNK_RULES = "code-whole-v1"
+REQUIRED_CHUNKER = "paragraph-v2"
+if mr_corpus.CHUNKER_VERSION != REQUIRED_CHUNKER or importlib.util.find_spec("markdown_it") is None:
+    raise ImportError("mr_corpus.py (%s) or markdown-it-py does not match mr_private.py (%s)"
+                      % (mr_corpus.CHUNKER_VERSION, REQUIRED_CHUNKER))
 
 
 def splits_headings(document):
@@ -67,7 +72,7 @@ def splits_headings(document):
         return False
     if suffix not in {".md", ".markdown", ".txt"} and name.split(".", 1)[0] in NO_HEADING_SPLIT_NAMES:
         return False
-    return not document["text"].lstrip("﻿").startswith("#!")
+    return not document["text"].lstrip("\ufeff").startswith("#!")
 
 
 def now():

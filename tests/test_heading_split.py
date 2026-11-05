@@ -1,8 +1,13 @@
+import os
+import subprocess
+import sys
 import unittest
 from unittest import mock
 
 import mr_corpus
 import mr_private
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def headings(text):
@@ -34,13 +39,13 @@ class FencedCodeTests(unittest.TestCase):
         "html_comment": ("<!--\n- ```\n-->\n\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "pre_in_list_item": ("- <pre>\n  ```\n  </pre>\n\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "pre_block": ("# A\n<pre>\n```\n# not a heading\n</pre>\n\n# B\ntext\n", ["A", "B"]),
-        "nbsp_after_closer": ("```\n``` \n# lost\n# kept\nbody\n", ["(开头)"]),
+        "nbsp_after_closer": ("```\n```\u00a0\n# lost\n# kept\nbody\n", ["(开头)"]),
         "thematic_break": ("* * *\n    ```\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "indented_code_block": ("    - ```\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "lazy_continuation": ("- item\nlazy\n    ```\n    code\n  ```\n\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "tab_indented_fence": ("- item\n\t```\n\tcode\n  ```\n\n# Outside\nbody\n", ["(开头)", "Outside"]),
         "blockquote_fence": ("# A\n> ```bash\n> # quoted comment\n> ```\n\n# B\ntext\n", ["A", "B"]),
-        "ideographic_space_outside_code": ("```\ncode\n```\n#　全角标题\nbody\n", ["(开头)", "全角标题"]),
+        "ideographic_space_outside_code": ("```\ncode\n```\n#\u3000全角标题\nbody\n", ["(开头)", "全角标题"]),
     }
 
     def test_headings_follow_commonmark_code_blocks(self):
@@ -119,6 +124,27 @@ class PrivateCodeFileTests(unittest.TestCase):
         with mock.patch.object(mr_private, "PRIVATE_CHUNK_RULES", "other"):
             self.assertNotEqual(mr_private.partition_fingerprint(docs, "policy", "root"), current)
         self.assertEqual(mr_private.partition_fingerprint(docs, "policy", "root"), current)
+
+
+class MixedDeploymentTests(unittest.TestCase):
+    def import_private(self, setup):
+        return subprocess.run([sys.executable, "-c", setup + "\nimport mr_private\n"], cwd=ROOT,
+                              capture_output=True, text=True)
+
+    def test_old_chunker_is_refused(self):
+        done = self.import_private("import mr_corpus\nmr_corpus.CHUNKER_VERSION = 'paragraph-v1'")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("ImportError", done.stderr)
+
+    def test_missing_markdown_it_is_refused(self):
+        done = self.import_private("import importlib.util as u\nreal = u.find_spec\n"
+                                   "u.find_spec = lambda name, *a: None if name == 'markdown_it' else real(name, *a)")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("ImportError", done.stderr)
+
+    def test_matching_files_import(self):
+        done = self.import_private("")
+        self.assertEqual(done.returncode, 0, done.stderr)
 
 
 if __name__ == "__main__":
