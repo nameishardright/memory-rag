@@ -2,6 +2,7 @@
 """语料层:三源加载 → 按标题切块 → 凭据脱敏(只对 CC memory 源)。
 设计决策与概念对应见 Desktop\\Agent学习计划\\notes\\第5-6周-毕业项目2.0-记忆RAG.md
 """
+import functools
 import hashlib
 import json
 import os
@@ -254,7 +255,7 @@ def signature(skip=frozenset()):
             parts.append("pdf|%s|%d|%d" % (os.path.basename(p), int(st.st_mtime), st.st_size))
     return hashlib.md5("\n".join(parts).encode()).hexdigest()
 MAX_CHUNK = 1500              # 字符;标题块超长再硬切
-CHUNKER_VERSION = "paragraph-v1"
+CHUNKER_VERSION = "paragraph-v2"
 CHUNK_STRATEGY = os.environ.get("MR_CHUNK_STRATEGY", "paragraph")
 
 
@@ -307,11 +308,38 @@ def redact_values(value):
     return value
 
 
+RE_HEADING = re.compile(r"^#{1,3}\s")
+RE_BLOCK_START = re.compile(r"(?m)^[ \t>*+\-\d.)]*(?:```|~~~|<[A-Za-z!?/])")
+RAW_BLOCKS = frozenset({"fence", "code_block", "html_block"})
+_RAW_CACHE = {}
+
+
+@functools.lru_cache(maxsize=1)
+def _markdown():
+    from markdown_it import MarkdownIt
+    return MarkdownIt("commonmark").disable(["inline", "text_join"], ignoreInvalid=True)
+
+
+def _raw_ranges(text):
+    key = hashlib.md5(text.encode("utf-8", "surrogatepass")).digest()
+    ranges = _RAW_CACHE.get(key)
+    if ranges is None:
+        ranges = tuple(tuple(t.map) for t in _markdown().parse(text) if t.type in RAW_BLOCKS and t.map)
+        if len(_RAW_CACHE) >= 8192:
+            _RAW_CACHE.clear()
+        _RAW_CACHE[key] = ranges
+    return ranges
+
+
 def _split_heading(text):
     """按 #/##/### 切块,标题作为块头;frontmatter/无标题前导归入'(开头)'块。"""
     blocks, cur_head, cur = [], "(开头)", []
-    for ln in text.splitlines():
-        if re.match(r"^#{1,3}\s", ln):
+    lines = text.splitlines()
+    joined = "\n".join(lines)
+    raw = ({i for start, end in _raw_ranges(joined) for i in range(start, end)}
+           if RE_BLOCK_START.search(joined) else set())
+    for i, ln in enumerate(lines):
+        if i not in raw and RE_HEADING.match(ln):
             if "".join(cur).strip():
                 blocks.append((cur_head, "\n".join(cur).strip()))
             cur_head, cur = ln.lstrip("#").strip(), []

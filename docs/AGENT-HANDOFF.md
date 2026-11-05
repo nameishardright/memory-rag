@@ -1,8 +1,19 @@
 # OneDrive 私有 RAG：agent 接手说明
 
-更新日期：2026-10-21。私有模块已合入 main（`5db082b`，PR #1）。OneDrive 里运行的检索代码是 `5db082b`，2026-10-21 部署；完整部署提交与文件 SHA-256 以本机 `app-manifest.json` 为准。
+更新日期：2026-11-05。私有模块已合入 main（`5db082b`，PR #1）。issue #2 的修复在分支 `fix/issue-2-heading-split-in-code` 上；OneDrive 里实际运行哪个提交、各文件的 SHA-256，只以本机 `app-manifest.json` 为准。
 
 先读本页和[变更记录](CHANGELOG-RAG.md)，再按[私有版使用指南](private-corpus.md)操作。这些文件只包含通用实现、操作路径和汇总结果。
+
+## issue #2 修复的部署方式（2026-11-05）
+
+改动见[变更记录](CHANGELOG-RAG.md)第一节：代码块里的 `#` 行不再当标题，源码和配置文件不再按 `#` 分节，私有分区指纹加入分块版本。
+
+- 新依赖 markdown-it-py 4.2.0 和 mdurl 0.1.2 是纯 Python 包。部署时原样放进 `app/markdown_it`、`app/mdurl`，许可证随包，`app-manifest.json` 的 `vendored` 记录每个文件的哈希。桌面入口直接运行 `app` 里的脚本，会先从 `app` 导入，资料源电脑不用联网安装。
+- 部署时根目录的 `Finish-Update.cmd` 改为运行 `updates/20261105/finish_update.py`。步骤与 10-21 版相同，只是核对新的部署提交，并多核对两个随附包是否同步完。10-21 版只认旧提交，留作历史。
+- 写入前先在根目录放 `stop.request`，这是 Stop-Updates 用的同一个停止信号；Finish-Update 和 Start-Updates 启动时都会删掉它。文件按随附包、`mr_corpus.py`、其余文件、`mr_private*.py` 的顺序写入，`app-manifest.json` 最后写。
+- 10-21 的策略变化本来就要求下一次导入重写全部分区，新的分块规则在同一次导入里生效，不会多出一次重建。
+- 三件事分开看证据：部署本身看 `updates/20261105/deployment-results.json`；资料源电脑是否同步完，看 Finish-Update 第一步的哈希核对；导入和检索检查看 `updates/20261105/finish-result.json`。
+- 回退：按 `updates/20261105/backup-9cd8769/backup-manifest.json` 放回原件，删除 `app/markdown_it`、`app/mdurl` 和 `updates/20261105`。部署电脑上的本地备份保留。
 
 ## 2026-10-21 部署的自然问法改动
 

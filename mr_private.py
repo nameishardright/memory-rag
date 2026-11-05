@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import struct
 import subprocess
 import sys
@@ -28,7 +28,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import mr_corpus
 from mr_index import rrf, rrf_files
 from mr_private_index import PRIVATE_TOKENIZER, PrivateBM25
-from mr_private_policy import (SCOPES, classify, load_policy, policy_signature, project_group)
+from mr_private_policy import (CODE_EXTENSIONS, SCOPES, classify, load_policy, policy_signature, project_group)
 
 JOURNAL_MAGIC = b"FAMILYMEMORYv1\x00"
 STORE_MAGIC = b"MEMORYRAGPRIVATEv1\x00"
@@ -45,6 +45,29 @@ PERSONAL_EXTENSIONS = {
     ".env", ".log", ".url", ".sqlite", ".db", ".png", ".jpg", ".jpeg",
     ".bmp", ".tif", ".tiff", ".webp", ".gif",
 }
+NO_HEADING_SPLIT = CODE_EXTENSIONS | {
+    ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf", ".properties", ".env",
+    ".rb", ".pl", ".r", ".lua", ".tf", ".mk", ".gradle", ".dockerfile",
+}
+NO_HEADING_SPLIT_NAMES = {
+    "dockerfile", "containerfile", "makefile", "gnumakefile", "rakefile", "gemfile", "jenkinsfile",
+    "vagrantfile", "procfile", ".gitignore", ".dockerignore", ".gitattributes", ".editorconfig",
+    "requirements.txt", "constraints.txt",
+}
+MARKDOWN_METHODS = {"project_catalogue", "curated_memory", "onenote_com"}
+PRIVATE_CHUNK_RULES = "code-whole-v1"
+
+
+def splits_headings(document):
+    if document.get("method") in MARKDOWN_METHODS:
+        return True
+    name = PurePosixPath(document["file"].replace("\\", "/").split("!/")[-1]).name.casefold()
+    suffix = PurePosixPath(name).suffix
+    if suffix in NO_HEADING_SPLIT or name in NO_HEADING_SPLIT_NAMES:
+        return False
+    if suffix not in {".md", ".markdown", ".txt"} and name.split(".", 1)[0] in NO_HEADING_SPLIT_NAMES:
+        return False
+    return not document["text"].lstrip("﻿").startswith("#!")
 
 
 def now():
@@ -190,7 +213,11 @@ def make_chunks(documents):
     chunks = []
     for doc in documents:
         ordinal = 0
-        for heading, text in mr_corpus._split_heading(doc["text"]):
+        if splits_headings(doc):
+            blocks = mr_corpus._split_heading(doc["text"])
+        else:
+            blocks = [("(开头)", doc["text"].strip())] if doc["text"].strip() else []
+        for heading, text in blocks:
             for head, body in mr_corpus._hard_wrap(heading, text, strategy="paragraph"):
                 ordinal += 1
                 digest = mr_corpus.chunk_key(doc["file"], head, body)
@@ -242,7 +269,8 @@ def _project_catalogue(documents):
 
 
 def partition_fingerprint(documents, policy_hash, source_root):
-    digest = hashlib.sha256((policy_hash + str(source_root)).encode('utf-8'))
+    chunking = mr_corpus.CHUNKER_VERSION + '|' + PRIVATE_CHUNK_RULES
+    digest = hashlib.sha256((policy_hash + str(source_root) + '|' + chunking).encode('utf-8'))
     for document in documents:
         metadata = {k: v for k, v in document.items() if k != 'text'}
         digest.update(json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode('utf-8'))

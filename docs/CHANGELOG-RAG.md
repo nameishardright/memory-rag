@@ -1,6 +1,18 @@
 # OneDrive 私有 RAG 变更记录
 
-最近更新：2026-10-21（10-11、10-14 两节的改动已部署，见第一节）；首次记录：2026-10-03。私有模块已合入 main（`5db082b`）；原交付分支 [`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+最近更新：2026-11-05（issue #2 的修复，见第一节）；首次记录：2026-10-03。私有模块已合入 main（`5db082b`）；原交付分支 [`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+
+## 2026-11-05：代码块里的 `#` 行不再当标题（issue #2）
+
+[issue #2](https://github.com/nameishardright/memory-rag/issues/2) 报告：`_split_heading` 把每个以 `#`、`##`、`###` 加空白开头的行都当标题，包括代码块里的注释。结果是代码块被切成两半，注释被挪进标题；两行注释挨着时，前一行整行进不了索引。私有版 `make_chunks` 复用同一函数，源码文件也在列首注释处被切开。
+
+| 改动 | 效果 |
+|---|---|
+| `mr_corpus.py`：文件里有围栏或 HTML 开头的行时，用 markdown-it-py（CommonMark）找出代码块和 HTML 块，块内的 `#` 行不再切分 | 列表里的围栏、未闭合的围栏、`<pre>` 和 HTML 注释都按 CommonMark 处理；其余文件的切法与以前完全相同 |
+| `mr_private.py`：源码和配置文件（按扩展名、`Dockerfile` / `Makefile` 这类文件名、开头的 `#!`）不按 `#` 分节，只按长度切 | 注释不再被当成标题，也不再丢行；项目目录导航、整理过的家庭记忆和 OneNote 页面照常按标题切 |
+| `CHUNKER_VERSION` 改为 `paragraph-v2`，私有分区指纹加入分块版本 | 下一次导入时 technical / stock / history 分区各重新分块一次，之后照常复用 |
+
+新增依赖 markdown-it-py（运行时只依赖 mdurl），已写进 `requirements-private.txt` 和 `mr.py setup-vec`。回归测试 `tests/test_heading_split.py` 全部使用虚构内容；代码块用例的期望结果与 markdown-it-py 的判定逐条核对过。
 
 ## 2026-10-21：部署到 OneDrive 和真实资料回归
 
