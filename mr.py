@@ -166,7 +166,7 @@ def cmd_setup_vec():
     print("装依赖(清华镜像,含 torch CPU,几百 MB,耐心)…")
     rc = subprocess.call([sys.executable, "-m", "pip", "install", "-q",
                           "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
-                          "sentence-transformers", "jieba"])
+                          "sentence-transformers", "jieba", "markdown-it-py"])
     if rc != 0:
         print("pip 失败 rc=%d,检查网络/镜像" % rc)
         return

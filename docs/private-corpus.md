@@ -88,7 +88,10 @@ the pinned repository checksum; inference reads local files only. E5 uses `query
 and `passage:` prefixes. The embedded passage begins with its folder and file name,
 which is often the only place a record's type or year appears; changing that text
 changed the encoder version, so earlier vector caches are rebuilt with `prepare`.
-Long heading chunks use overlapping tokenizer-sized windows
+Documents are split at Markdown headings, ignoring `#` lines inside code and HTML
+blocks. Source and config files, recognised by extension, by names such as
+`Dockerfile` and `Makefile`, or by a leading `#!`, are not split at `#` lines; they
+are only split by size. Long heading chunks use overlapping tokenizer-sized windows
 without changing the original source chunks. Model weights contain no personal data
 and live outside OneDrive by default.
 
