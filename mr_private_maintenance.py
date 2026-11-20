@@ -10,11 +10,12 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 
 from mr_private import (atomic_write, candidate_files, discard_candidate, import_journals, load_private_rag,
-                        load_store, now, promote_candidate, read_journal, save_store)
+                        load_store, now, promote_candidate, read_journal, save_store, unreferenced_partitions)
 from mr_private_policy import classify, policy_signature, SCOPES
 
 
@@ -77,6 +78,8 @@ def deployment_complete(app=None):
     try:
         listed = json.loads(manifest.read_text(encoding='utf-8'))
         expected = dict(listed['sha256'])
+        if not expected:
+            return False
         for package in listed.get('vendored', {}).values():
             expected.update(package['files'])
         return all(hashlib.sha256((app / name).read_bytes()).hexdigest() == digest
@@ -85,9 +88,17 @@ def deployment_complete(app=None):
         return False
 
 
+def lock_path(store):
+    root = Path(os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()) / 'memory-rag' / 'locks'
+    key = hashlib.sha256(os.path.normcase(str(Path(store).resolve())).encode('utf-8')).hexdigest()[:32]
+    return root / (key + '.lock')
+
+
 @contextlib.contextmanager
-def single_writer(source):
-    handle = open(Path(source) / 'maintenance.lock', 'a+b')
+def single_writer(store):
+    path = lock_path(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, 'a+b')
     try:
         handle.seek(0)
         try:
@@ -98,10 +109,23 @@ def single_writer(source):
                 import fcntl
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise RuntimeError('Another maintenance cycle is running for this source') from None
+            raise RuntimeError('Another maintenance cycle is running for this store') from None
         yield
     finally:
         handle.close()
+        if os.name == 'nt':
+            with contextlib.suppress(OSError):
+                path.unlink()
+
+
+def read_implementation(attempts=30):
+    for attempt in range(attempts):
+        try:
+            return implementation_signature()
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2)
 
 
 def read_state(path):
@@ -289,7 +313,7 @@ def verify_native_ui(store, password):
 
 
 def cycle(source, store, password, run_dir):
-    with single_writer(source):
+    with single_writer(store):
         return _locked_cycle(source, store, password, run_dir)
 
 
@@ -315,19 +339,21 @@ def _locked_cycle(source, store, password, run_dir):
     snapshot, created = payload.get('updated_at'), payload.get('created_partitions', ())
     del payload
     staged = staged and not unchanged
-    accepted = read_state(store.parent / 'verification.json')
-    if not (unchanged and accepted.get('passed') and snapshot and accepted.get('snapshot_updated_at') == snapshot):
-        update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
-        promoted, stale = False, []
-        try:
+    promoted, stale, verification = False, [], None
+    try:
+        accepted = read_state(store.parent / 'verification.json')
+        if not (unchanged and accepted.get('passed') and snapshot and accepted.get('snapshot_updated_at') == snapshot):
+            update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
             verification = verify_live(candidate_files(store)[-1][0] if staged else store, password)
             report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
             atomic_write(run_dir / 'live-verification.json', report)
             if staged and verification['passed']:
                 stale = promote_candidate(store)
                 promoted = True
-        finally:
-            if staged and not promoted: discard_candidate(store, created)
+    finally:
+        if staged and not promoted:
+            discard_candidate(store, unreferenced_partitions(store, password, created))
+    if verification is not None:
         if staged and not verification['passed']:
             atomic_write(store.parent / 'verification-rejected.json', report)
             raise RuntimeError('Live private retrieval verification failed')
@@ -356,7 +382,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     password = sys.stdin.readline().rstrip('\r\n') if args.stdin_password else getpass.getpass('Archive password: ')
     args.source, args.store = args.source.resolve(), args.store.resolve()
-    loaded_implementation = implementation_signature()
+    loaded_implementation = read_implementation()
     run_dir = (args.run_dir or args.source / 'rag-maintenance').resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     if args.interval < 30: parser.error('Interval must be at least 30 seconds')
@@ -388,10 +414,12 @@ def main(argv=None):
         if args.once and not args.store.is_file():
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
-            update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
-            with single_writer(args.source):
-                payload = import_journals(args.source, args.store, password, partitioned=True)
-            del payload
+            with single_writer(args.store):
+                if not args.store.is_file():
+                    update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
+                    payload = import_journals(args.source, args.store, password, partitioned=True)
+                    del payload
+        completed = False
         while not source_marker.exists():
             if (args.store.parent / 'stop.request').exists(): break
             try:
@@ -425,9 +453,10 @@ def main(argv=None):
                            and time.time() - previous.get('checked_at_epoch', 0) >= gap_wait)
                 backing_off = (failed.get('source_fingerprint') == fingerprint
                                and time.time() < failed.get('retry_after_epoch', 0))
-                refresh = args.once or ((changed or gap_due) and not backing_off)
+                pending = bool(failed) and failed.get('source_fingerprint') == fingerprint
+                refresh = args.once or ((changed or gap_due or pending) and not backing_off)
                 update_status(args.store.parent / 'watcher.status.json',
-                              'updating' if refresh else 'backing_off' if changed or gap_due else 'monitoring',
+                              'updating' if refresh else 'backing_off' if changed or gap_due or pending else 'monitoring',
                               pid=os.getpid())
                 if refresh:
                     summary = cycle(args.source, args.store, password, run_dir)
@@ -441,6 +470,7 @@ def main(argv=None):
                                  'gap_retries': int(previous.get('gap_retries', 0)) + 1 if same_gaps else 0,
                                  'verified_at': now()}, indent=2).encode('utf-8'))
                     if failure_state.exists(): failure_state.unlink()
+                    completed = True
             except MaintenanceStopped:
                 update_status(run_dir / 'run.status.json', 'stopped')
                 return 0
@@ -461,6 +491,9 @@ def main(argv=None):
                 if _ % 30 == 0:
                     update_status(args.store.parent / 'watcher.status.json', 'running', pid=os.getpid())
                 time.sleep(1)
+        if args.once and not completed:
+            update_status(run_dir / 'run.status.json', 'stopped')
+            return 0
         if args.resume and args.once:
             command = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), '--source', str(args.source),
                        '--store', str(args.store), '--run-dir', str(run_dir / 'background'), '--stdin-password']

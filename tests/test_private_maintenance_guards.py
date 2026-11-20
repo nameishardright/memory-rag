@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import io
 import json
@@ -198,6 +199,51 @@ class PublishTests(unittest.TestCase):
         self.assertNotIn('unchanged', third)
         self.assertEqual(load_store(self.store, PASSWORD)['source'], str(moved.resolve()))
 
+    def test_an_interrupted_switch_keeps_the_partitions_the_new_root_uses(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.run_cycle(True)
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02', 'Synthetic architecture design, second revision')
+        real = os.replace
+
+        def replace(origin, target):
+            if Path(target) == self.store.with_suffix('.status.json') and 'candidate' in Path(origin).name:
+                raise KeyboardInterrupt()
+            return real(origin, target)
+
+        with patch('mr_private.os.replace', side_effect=replace), \
+             patch('mr_private_maintenance.run_script'), \
+             patch('mr_private_onenote.harvest', return_value={'state': 'no_linked_notebooks'}), \
+             patch('mr_private_maintenance.verify_live', return_value={'passed': True, 'snapshot_updated_at': 'synthetic'}):
+            with self.assertRaises(KeyboardInterrupt):
+                cycle(self.source, self.store, PASSWORD, self.run_dir)
+        rag = load_private_rag(self.store, PASSWORD)
+        self.assertTrue(rag.search('tax')['hits'])
+        self.assertTrue(rag.search('revision', scope='technical')['hits'])
+
+        self.assertEqual(self.run_cycle(True), (['corpus.candidate.enc'], None))
+        self.assertEqual(self.status_stamp(), self.root_stamp())
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_failure_before_verification_removes_the_candidate_and_its_partitions(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.run_cycle(True)
+        accepted, published = self.snapshot(), self.partitions()
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02', 'Synthetic architecture design, second revision')
+        real = mr_private_maintenance.update_status
+
+        def status(path, state, **values):
+            if state == 'verifying':
+                raise PermissionError('synthetic')
+            return real(path, state, **values)
+
+        with patch('mr_private_maintenance.update_status', side_effect=status):
+            seen, error = self.run_cycle(True)
+        self.assertEqual(seen, [])
+        self.assertIsInstance(error, PermissionError)
+        self.assertEqual(self.snapshot(), accepted)
+        self.assertEqual(self.partitions(), published)
+        self.assertEqual(self.leftovers(), [])
+
     def test_a_candidate_root_is_checked_against_its_own_review(self):
         self.assertEqual(mr_private.review_path(Path('private/corpus.enc')).name, 'coverage-review.enc')
         self.assertEqual(mr_private.review_path(Path('private/corpus.candidate.enc')).name, 'coverage-review.candidate.enc')
@@ -288,22 +334,63 @@ class OnceTests(unittest.TestCase):
         self.assertEqual(self.run_once(True), (0, ['corpus.candidate.enc']))
         self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
 
+    def test_one_shot_run_that_is_stopped_before_its_cycle_says_so(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.assertEqual(self.run_once(True), (0, ['corpus.enc']))
+        status = self.source / 'rag-maintenance' / 'run.status.json'
+        self.assertIn(json.loads(status.read_text(encoding='utf-8'))['state'], ('complete', 'complete_with_content_gaps'))
+        with patch('mr_private_maintenance.sys.stdin', io.StringIO(PASSWORD + '\n')), \
+             patch('mr_private_maintenance.read_journal', return_value=iter([{}])), \
+             patch('mr_private_maintenance.stop_legacy_watcher', side_effect=lambda store: (store.parent / 'stop.request').touch()), \
+             patch('mr_private_maintenance.cycle') as run_cycle:
+            code = maintenance_main(['--source', str(self.source), '--store', str(self.store),
+                                     '--stdin-password', '--once', '--worker'])
+        self.assertEqual(code, 0)
+        run_cycle.assert_not_called()
+        self.assertEqual(json.loads(status.read_text(encoding='utf-8'))['state'], 'stopped')
+
+    def test_first_build_checks_for_a_store_again_once_it_holds_the_lock(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        real_import, calls = mr_private_maintenance.import_journals, []
+
+        @contextlib.contextmanager
+        def lock(store):
+            if not self.store.is_file():
+                real_import(self.source, self.store, PASSWORD, partitioned=True)
+            yield
+
+        def spy(source, store, password, **options):
+            calls.append((Path(store).is_file(), bool(options.get('staged'))))
+            return real_import(source, store, password, **options)
+
+        with patch('mr_private_maintenance.single_writer', side_effect=lock), \
+             patch('mr_private_maintenance.import_journals', side_effect=spy):
+            self.assertEqual(self.run_once(True)[0], 0)
+        self.assertNotIn((True, False), calls)
+
 
 class LockTests(unittest.TestCase):
-    def test_only_one_cycle_runs_for_a_source_at_a_time(self):
+    def test_only_one_cycle_runs_for_a_store_at_a_time(self):
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory)
-            store = source / 'private' / 'corpus.enc'
-            with mr_private_maintenance.single_writer(source):
+            root = Path(directory)
+            store = root / 'private' / 'corpus.enc'
+            store.parent.mkdir()
+            first, second = root / 'first', root / 'second'
+            first.mkdir(); second.mkdir()
+            with mr_private_maintenance.single_writer(store):
                 with self.assertRaises(RuntimeError):
-                    with mr_private_maintenance.single_writer(source):
+                    with mr_private_maintenance.single_writer(store):
                         pass
-                with patch('mr_private_maintenance.run_script') as collect:
-                    with self.assertRaises(RuntimeError):
-                        cycle(source, store, PASSWORD, source)
-                    collect.assert_not_called()
-            with mr_private_maintenance.single_writer(source):
+                for source in (first, second):
+                    with patch('mr_private_maintenance.run_script') as collect:
+                        with self.assertRaisesRegex(RuntimeError, 'Another maintenance cycle'):
+                            cycle(source, store, PASSWORD, source)
+                        collect.assert_not_called()
+            with mr_private_maintenance.single_writer(store):
                 pass
+            with mr_private_maintenance.single_writer(root / 'elsewhere' / 'corpus.enc'):
+                with mr_private_maintenance.single_writer(store):
+                    pass
 
 
 class LoopTests(unittest.TestCase):
@@ -379,6 +466,34 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.state('watcher.status.json')['state'], 'waiting_for_deployment')
 
 
+    def test_a_failed_attempt_is_retried_even_when_the_checkpoint_matches_the_source(self):
+        clock_start = 1_800_000_000.0
+        (self.output / 'maintenance-checkpoint.json').write_text(json.dumps(
+            {'source_fingerprint': 'v1', 'checked_at_epoch': clock_start, 'retryable_gaps': 0}), encoding='utf-8')
+        (self.output / 'maintenance-failure.json').write_text(json.dumps(
+            {'source_fingerprint': 'v1', 'failures': 1, 'retry_after_epoch': clock_start + 600}), encoding='utf-8')
+        attempts = []
+
+        def succeed(*_args):
+            attempts.append(self.clock.now - self.clock.start)
+            return {'coverage': {'content_gaps': {}}}
+
+        self.run_loop(3600, succeed)
+        self.assertEqual(len(attempts), 1)
+        self.assertGreaterEqual(attempts[0], 600)
+        self.assertFalse((self.output / 'maintenance-failure.json').exists())
+
+    def test_code_files_that_cannot_be_read_at_startup_are_read_again(self):
+        answers = iter([PermissionError('synthetic'), PermissionError('synthetic')])
+
+        def signature():
+            for answer in answers:
+                raise answer
+            return 'same'
+
+        run_cycle = self.run_loop(60, lambda *_args: {'coverage': {'content_gaps': {}}}, implementation_signature=signature)
+        self.assertEqual(run_cycle.call_count, 1)
+
     def test_unreadable_code_files_wait_instead_of_ending_the_loop(self):
         answers = iter(['same'])
 
@@ -417,6 +532,8 @@ class ManifestTests(unittest.TestCase):
             (app / 'bundled').mkdir()
             (app / 'bundled' / 'main.py').write_text('bundled', encoding='utf-8')
             self.assertTrue(deployment_complete(app))
+            manifest.write_text(json.dumps({'sha256': {}}))
+            self.assertFalse(deployment_complete(app))
 
 
 if __name__ == '__main__':

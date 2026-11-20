@@ -369,6 +369,14 @@ def discard_candidate(store, partitions=()):
             continue
 
 
+def unreferenced_partitions(store, password, names):
+    try:
+        live = {metadata.get('file') for metadata in load_store(store, password).get('shards', {}).values()}
+    except (OSError, ValueError, AttributeError, InvalidTag):
+        return []
+    return [name for name in names if name not in live]
+
+
 def _sidecars_current(store, password, updated_at):
     try:
         status = json.loads(store.with_suffix('.status.json').read_text(encoding='utf-8'))
