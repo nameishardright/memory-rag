@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -349,6 +350,37 @@ class OnceTests(unittest.TestCase):
         self.assertEqual(self.run_once(True), (0, ['corpus.candidate.enc']))
         self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
 
+    def test_a_stop_request_made_before_the_worker_starts_is_kept(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.assertEqual(self.run_once(True), (0, ['corpus.enc']))
+        accepted = [path.read_bytes() for path in self.sidecars]
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02')
+        marker = self.source / 'stop.request'
+        marker.touch()
+        self.assertEqual(self.run_once(True), (0, []))
+        self.assertTrue(marker.is_file())
+        self.assertEqual([path.read_bytes() for path in self.sidecars], accepted)
+        status = json.loads((self.source / 'rag-maintenance' / 'run.status.json').read_text(encoding='utf-8'))
+        self.assertEqual(status['state'], 'stopped')
+
+    def test_startup_leaves_the_stop_marker_alone_when_no_old_watcher_runs(self):
+        marker = self.output / 'stop.request'
+        (self.output / 'watcher.status.json').write_text(json.dumps({'pid': 999999}), encoding='utf-8')
+        answers = []
+
+        def powershell(command, **_options):
+            answers.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+
+        for requested in (False, True):
+            if requested:
+                marker.touch()
+            with patch('mr_private_maintenance.subprocess.run', side_effect=powershell):
+                mr_private_maintenance.stop_legacy_watcher(self.store)
+            self.assertEqual(marker.is_file(), requested)
+        self.assertEqual(len(answers), 2)
+        self.assertFalse(any('Stop-Process' in command for command in answers))
+
     def test_one_shot_run_that_is_stopped_before_its_cycle_says_so(self):
         journal(self.source, 'Synthetic family passport', '2026-01-01')
         self.assertEqual(self.run_once(True), (0, ['corpus.enc']))
@@ -609,7 +641,10 @@ class ManifestTests(unittest.TestCase):
             app = Path(directory) / 'app'; (app / 'scripts').mkdir(parents=True)
             (app / 'mr_private.py').write_text('new', encoding='utf-8')
             (app / 'scripts' / 'worker.py').write_text('worker', encoding='utf-8')
+            self.assertFalse(deployment_complete(app))
+            (app / '.git').mkdir()
             self.assertTrue(deployment_complete(app))
+            (app / '.git').rmdir()
             digest = lambda text: hashlib.sha256(text.encode()).hexdigest()
             manifest = Path(directory) / 'app-manifest.json'
             manifest.write_text(json.dumps({'sha256': {'mr_private.py': digest('new'), 'scripts/worker.py': digest('worker')}}))

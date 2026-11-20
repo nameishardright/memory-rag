@@ -74,7 +74,7 @@ def deployment_complete(app=None):
     app = Path(app or Path(__file__).parent)
     manifest = app.parent / 'app-manifest.json'
     if not manifest.is_file():
-        return True
+        return (app / '.git').exists()
     try:
         listed = json.loads(manifest.read_text(encoding='utf-8'))
         expected = dict(listed['sha256'])
@@ -156,23 +156,26 @@ def run_script(source, name, args, password, run_dir):
 
 
 def stop_legacy_watcher(store):
+    pid = read_state(store.parent / 'watcher.status.json').get('pid')
+    if not pid or pid == os.getpid():
+        return
+    quoted = str(store).replace("'", "''")
+    match = ("$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
+             "if($ragTask -and $ragTask.CommandLine -and $ragTask.CommandLine.Contains('mr_private.py') "
+             "-and $ragTask.CommandLine.Contains('" + quoted + "')) { ")
+    found = subprocess.run(['powershell.exe', '-NoProfile', '-Command', match + "'legacy-watcher' }"], capture_output=True,
+                           text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+    if 'legacy-watcher' not in (found.stdout or ''):
+        return
     marker = store.parent / 'stop.request'
+    requested = marker.exists()
     marker.touch()
-    state = store.parent / 'watcher.status.json'
-    pid = None
-    if state.is_file():
-        pid = json.loads(state.read_text(encoding='utf-8')).get('pid')
-    if pid and pid != os.getpid():
-        quoted = str(store).replace("'", "''")
-        code = ("$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
-                "if($ragTask -and $ragTask.CommandLine -and $ragTask.CommandLine.Contains('mr_private.py') "
-                "-and $ragTask.CommandLine.Contains('" + quoted + "')) { "
-                "Start-Sleep -Seconds 2; $ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
-                "if($ragTask -and $ragTask.CommandLine.Contains('mr_private.py') -and $ragTask.CommandLine.Contains('" + quoted + "')) "
-                "{ Stop-Process -Id " + str(int(pid)) + " -Force } }")
-        subprocess.run(['powershell.exe', '-NoProfile', '-Command', code], capture_output=True,
-                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
-    if marker.exists(): marker.unlink()
+    code = (match + "Start-Sleep -Seconds 2; $ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
+            "if($ragTask -and $ragTask.CommandLine.Contains('mr_private.py') -and $ragTask.CommandLine.Contains('" + quoted + "')) "
+            "{ Stop-Process -Id " + str(int(pid)) + " -Force } }")
+    subprocess.run(['powershell.exe', '-NoProfile', '-Command', code], capture_output=True,
+                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+    if marker.exists() and not requested: marker.unlink()
 
 
 def partition_probe(documents):
@@ -411,7 +414,6 @@ def main(argv=None):
         next(read_journal(args.source / 'core.enc', password))
         stop_legacy_watcher(args.store)
         source_marker = args.source / 'stop.request'
-        if source_marker.exists(): source_marker.unlink()
         if args.once and not args.store.is_file():
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
