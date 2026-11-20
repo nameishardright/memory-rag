@@ -102,7 +102,8 @@ def _lazy_skip():
 def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     skip = _lazy_skip()
-    chunks = mr_corpus.load_chunks(skip=skip)
+    sig = mr_corpus.signature(skip=skip)
+    chunks = mr_corpus.load_chunks(skip=skip, cache=_STATE.setdefault("files", {}))
     _STATE["chunks"] = chunks
     mr_index.BM25.retain({(c.get("source"), c["md5"]) for c in chunks})   # 语料反复增删时别无限涨
     # Observability only: never use gold labels to filter, score or classify a hit.
@@ -141,7 +142,7 @@ def _rebuild(reason):
         _STATE["vecs"][slug] = (_SubVec(chunks, pdf_idx, model=v._model, spec=v.spec)
                                  if getattr(v, 'scope', None) == 'pdf'
                                  else mr_index.VecIndex(chunks, model=v._model, spec=v.spec))
-    _STATE["sig"] = mr_corpus.signature(skip=skip)
+    _STATE["sig"] = sig
     print("[reload] %s:语料 %d→%d 块%s" % (reason, old_n, len(chunks),
           (",按需源未装:" + ",".join(sorted(skip))) if skip else ""), file=sys.stderr)
 
