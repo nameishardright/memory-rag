@@ -9,10 +9,14 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 
 MODEL_ID = 'intfloat/multilingual-e5-small'
 REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
 VECTOR_VERSION = 1
+CHECKPOINT_ROWS = 512
+CHECKPOINT_SECONDS = 60
+CHECKPOINT_COST_RATIO = 10
 ENCODER_VERSION = 2  # 2: the embedded passage starts with its folder and file name
 
 
@@ -217,11 +221,14 @@ class PrivateVector:
                 windows.append({**window, 'chunk': i})
         rows, values, encoded, reused = [], [], 0, 0
         batch = []
+        saved = {'encoded': 0, 'at': time.monotonic(), 'cost': 0.0}
         def checkpoint(complete=False):
             if self.cancelled.is_set():
                 raise InterruptedError('Session locked')
             if values and self.cache and self.saver:
+                started = time.monotonic()
                 self.saver(self.cache, self._payload(rows, values, complete))
+                saved.update(encoded=encoded, at=time.monotonic(), cost=time.monotonic() - started)
         def flush():
             nonlocal encoded
             if not batch:
@@ -238,7 +245,9 @@ class PrivateVector:
             batch.clear()
             if progress:
                 progress(len(rows), len(windows))
-            if len(rows) % 512 == 0:
+            waited = time.monotonic() - saved['at']
+            if ((encoded - saved['encoded'] >= CHECKPOINT_ROWS or waited >= CHECKPOINT_SECONDS)
+                    and waited >= CHECKPOINT_COST_RATIO * saved['cost']):
                 checkpoint()
         for window in windows:
             if self.cancelled.is_set():
