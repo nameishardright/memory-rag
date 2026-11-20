@@ -58,19 +58,25 @@ def main():
     source = Path(payload['source'])
     controller = Path(__file__).with_name('mr_private_maintenance.py')
     launched = {}
-    marker = args.store.parent / 'stop.request'
-    if marker.is_file():
-        marker.unlink()
     if controller.is_file() and (source / 'tools' / 'build_memory.py').is_file():
-        marker = source / 'stop.request'
-        if marker.is_file():
-            marker.unlink()
-        current = running_processes('mr_private_maintenance.py', str(source))
-        if not current:
-            launched['collection_pid'] = start([sys.executable, str(controller), '--source', str(source),
-                                                '--store', str(args.store), '--stdin-password'], password)
-        else:
-            launched['collection_already_running'] = current
+        try:
+            from mr_private_maintenance import deployment_complete, single_writer
+            ready = deployment_complete()
+        except ImportError:
+            ready = False
+        if not ready:
+            print('The app folder is not fully synced yet; nothing was started. Try again when OneDrive has finished.')
+            return
+        with single_writer(args.store, 'launch'):
+            for marker in (args.store.parent / 'stop.request', source / 'stop.request'):
+                if marker.is_file():
+                    marker.unlink()
+            current = running_processes('mr_private_maintenance.py', str(source))
+            if not current:
+                launched['collection_pid'] = start([sys.executable, str(controller), '--source', str(source),
+                                                    '--store', str(args.store), '--stdin-password'], password)
+            else:
+                launched['collection_already_running'] = current
     else:
         print('The source collection tools are on the original computer; synced data remains searchable here.')
     print(json.dumps(launched))

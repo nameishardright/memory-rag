@@ -244,6 +244,21 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(self.partitions(), published)
         self.assertEqual(self.leftovers(), [])
 
+    def test_an_unchanged_run_retires_old_unreferenced_partitions(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        import_journals(self.source, self.store, PASSWORD, partitioned=True)
+        first = self.partitions()
+        journal(self.source, 'Synthetic family passport', '2026-01-02', 'Synthetic architecture design, second revision')
+        import_journals(self.source, self.store, PASSWORD, partitioned=True)
+        self.assertEqual(len(self.partitions()), 2)
+        old = self.store.with_name(first[0])
+        stamp = old.stat().st_mtime - 2 * 86400
+        os.utime(old, (stamp, stamp))
+        self.assertTrue(import_journals(self.source, self.store, PASSWORD, partitioned=True)['unchanged'])
+        self.assertEqual([name for name in self.partitions() if name == first[0]], [])
+        self.assertEqual(len(self.partitions()), 1)
+        self.assertTrue(load_private_rag(self.store, PASSWORD).search('revision', scope='technical')['hits'])
+
     def test_a_candidate_root_is_checked_against_its_own_review(self):
         self.assertEqual(mr_private.review_path(Path('private/corpus.enc')).name, 'coverage-review.enc')
         self.assertEqual(mr_private.review_path(Path('private/corpus.candidate.enc')).name, 'coverage-review.candidate.enc')
@@ -494,6 +509,38 @@ class LoopTests(unittest.TestCase):
         run_cycle = self.run_loop(60, lambda *_args: {'coverage': {'content_gaps': {}}}, implementation_signature=signature)
         self.assertEqual(run_cycle.call_count, 1)
 
+    def test_a_fresh_start_waits_for_a_complete_deployment(self):
+        run_cycle = self.run_loop(120, lambda *_args: {'coverage': {'content_gaps': {}}}, deployment_complete=lambda: False)
+        self.assertEqual(run_cycle.call_count, 0)
+        self.assertEqual(self.state('watcher.status.json')['state'], 'waiting_for_deployment')
+
+    def test_a_failed_fingerprint_probe_keeps_the_pending_retry(self):
+        clock_start = 1_800_000_000.0
+        (self.output / 'maintenance-checkpoint.json').write_text(json.dumps(
+            {'source_fingerprint': 'v1', 'checked_at_epoch': clock_start, 'retryable_gaps': 0}), encoding='utf-8')
+        (self.output / 'maintenance-failure.json').write_text(json.dumps(
+            {'source_fingerprint': 'v1', 'failures': 1, 'retry_after_epoch': clock_start + 600}), encoding='utf-8')
+        probes = iter([PermissionError('synthetic')])
+
+        def fingerprint():
+            for failure in probes:
+                raise failure
+            return 'v1'
+
+        self.fingerprint = fingerprint
+        run_cycle = self.run_loop(3 * 3600, lambda *_args: {'coverage': {'content_gaps': {}}})
+        self.assertEqual(run_cycle.call_count, 1)
+        self.assertFalse((self.output / 'maintenance-failure.json').exists())
+
+    def test_a_failure_for_a_source_that_went_back_is_dropped(self):
+        (self.output / 'maintenance-checkpoint.json').write_text(json.dumps(
+            {'source_fingerprint': 'v1', 'checked_at_epoch': 1_800_000_000.0, 'retryable_gaps': 0}), encoding='utf-8')
+        (self.output / 'maintenance-failure.json').write_text(json.dumps(
+            {'source_fingerprint': 'v0', 'failures': 3, 'retry_after_epoch': 1_800_000_000.0 + 9000}), encoding='utf-8')
+        run_cycle = self.run_loop(120, lambda *_args: {'coverage': {'content_gaps': {}}})
+        self.assertEqual(run_cycle.call_count, 0)
+        self.assertFalse((self.output / 'maintenance-failure.json').exists())
+
     def test_unreadable_code_files_wait_instead_of_ending_the_loop(self):
         answers = iter(['same'])
 
@@ -505,6 +552,55 @@ class LoopTests(unittest.TestCase):
         run_cycle = self.run_loop(120, lambda *_args: {'coverage': {'content_gaps': {}}}, implementation_signature=signature)
         self.assertEqual(run_cycle.call_count, 0)
         self.assertEqual(self.state('watcher.status.json')['state'], 'waiting_for_deployment')
+
+
+class LauncherTests(unittest.TestCase):
+    def launch(self, ready, running=()):
+        import mr_private_updates
+        with patch('mr_private_updates.getpass.getpass', return_value=PASSWORD), \
+             patch('mr_private_updates.load_store', return_value={'source': str(self.source)}), \
+             patch('mr_private_maintenance.deployment_complete', return_value=ready), \
+             patch('mr_private_updates.running_processes', return_value=list(running)), \
+             patch('mr_private_updates.start', return_value=4321) as start, \
+             patch('sys.argv', ['mr_private_updates.py', '--store', str(self.store)]), \
+             patch('sys.stdout', io.StringIO()) as output:
+            mr_private_updates.main()
+        return start, output.getvalue()
+
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.source = self.root / 'source'
+        (self.source / 'tools').mkdir(parents=True)
+        (self.source / 'tools' / 'build_memory.py').write_text('', encoding='utf-8')
+        self.store = self.root / 'private' / 'corpus.enc'
+        self.store.parent.mkdir()
+        self.markers = [self.store.parent / 'stop.request', self.source / 'stop.request']
+        for marker in self.markers:
+            marker.touch()
+
+    def test_start_refuses_a_half_synced_app_and_keeps_the_stop_markers(self):
+        start, output = self.launch(False)
+        start.assert_not_called()
+        self.assertTrue(all(marker.is_file() for marker in self.markers))
+        self.assertIn('not fully synced', output)
+
+    def test_start_launches_once_the_deployment_is_complete(self):
+        start, output = self.launch(True)
+        self.assertEqual(start.call_count, 1)
+        self.assertFalse(any(marker.is_file() for marker in self.markers))
+        self.assertIn('4321', output)
+
+    def test_start_leaves_the_markers_alone_on_a_computer_without_the_collector(self):
+        (self.source / 'tools' / 'build_memory.py').unlink()
+        start, _output = self.launch(True)
+        start.assert_not_called()
+        self.assertTrue(all(marker.is_file() for marker in self.markers))
+
+    def test_a_second_start_does_nothing_while_the_first_is_launching(self):
+        with mr_private_maintenance.single_writer(self.store, 'launch'):
+            with self.assertRaises(RuntimeError):
+                self.launch(True)
+        self.assertTrue(all(marker.is_file() for marker in self.markers))
 
 
 class ManifestTests(unittest.TestCase):

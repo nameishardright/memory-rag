@@ -600,6 +600,7 @@ def import_journals(source, store, password, partitioned=False, policy=None, sta
             and previous_root.get('review_sha256') == review_digest
             and _sidecars_current(store, password, previous_root['updated_at'])):
         payload.update(updated_at=previous_root['updated_at'], generation=previous_root['generation'], unchanged=True)
+        prune_generated_partitions(store, password, {metadata['file'] for metadata in previous_partitions.values()})
         return payload
     (status_path, _), (review_file, _), (root, _) = (candidate_files(store) if staged else
                                                     [(p, p) for _c, p in candidate_files(store)])

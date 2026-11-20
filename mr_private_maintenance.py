@@ -88,15 +88,15 @@ def deployment_complete(app=None):
         return False
 
 
-def lock_path(store):
+def lock_path(store, purpose='cycle'):
     root = Path(os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()) / 'memory-rag' / 'locks'
-    key = hashlib.sha256(os.path.normcase(str(Path(store).resolve())).encode('utf-8')).hexdigest()[:32]
-    return root / (key + '.lock')
+    name = purpose + '|' + os.path.normcase(str(Path(store).resolve()))
+    return root / (hashlib.sha256(name.encode('utf-8')).hexdigest()[:32] + '.lock')
 
 
 @contextlib.contextmanager
-def single_writer(store):
-    path = lock_path(store)
+def single_writer(store, purpose='cycle'):
+    path = lock_path(store, purpose)
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = open(path, 'a+b')
     try:
@@ -109,7 +109,8 @@ def single_writer(store):
                 import fcntl
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise RuntimeError('Another maintenance cycle is running for this store') from None
+            raise RuntimeError('Another maintenance cycle is running for this store' if purpose == 'cycle'
+                               else 'Another ' + purpose + ' is in progress for this store') from None
         yield
     finally:
         handle.close()
@@ -419,20 +420,22 @@ def main(argv=None):
                     update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
                     payload = import_journals(args.source, args.store, password, partitioned=True)
                     del payload
-        completed = False
+        completed, deployment_checked = False, args.once
         while not source_marker.exists():
             if (args.store.parent / 'stop.request').exists(): break
             try:
                 running_implementation = implementation_signature()
             except OSError:
                 running_implementation = None
-            if not args.once and running_implementation != loaded_implementation:
+            if not args.once and (running_implementation != loaded_implementation or not deployment_checked):
                 if running_implementation is None or not deployment_complete():
                     update_status(args.store.parent / 'watcher.status.json', 'waiting_for_deployment', pid=os.getpid())
                     for _ in range(args.interval):
                         if source_marker.exists(): break
                         time.sleep(1)
                     continue
+                deployment_checked = True
+            if not args.once and running_implementation != loaded_implementation:
                 command = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), '--source', str(args.source),
                            '--store', str(args.store), '--run-dir', str(run_dir), '--stdin-password',
                            '--interval', str(args.interval)]
@@ -448,6 +451,9 @@ def main(argv=None):
                 fingerprint = source_fingerprint(args.source)
                 previous = read_state(checkpoint)
                 changed = fingerprint != previous.get('source_fingerprint')
+                if failed and not changed and failed.get('source_fingerprint') not in (None, fingerprint):
+                    failure_state.unlink(missing_ok=True)
+                    failed = {}
                 gap_wait = min(GAP_RETRY_SECONDS * 2 ** int(previous.get('gap_retries', 0)), GAP_RETRY_CAP_SECONDS)
                 gap_due = (bool(previous.get('retryable_gaps', 0))
                            and time.time() - previous.get('checked_at_epoch', 0) >= gap_wait)
@@ -475,10 +481,11 @@ def main(argv=None):
                 update_status(run_dir / 'run.status.json', 'stopped')
                 return 0
             except Exception as error:
-                failures = int(failed.get('failures', 0)) + 1 if failed.get('source_fingerprint') == fingerprint else 1
+                known = fingerprint if fingerprint is not None else failed.get('source_fingerprint')
+                failures = int(failed.get('failures', 0)) + 1 if failed.get('source_fingerprint') == known else 1
                 retry_after = time.time() + min(args.interval * 2 ** failures, RETRY_CAP_SECONDS)
                 if not args.once:
-                    atomic_write(failure_state, json.dumps({'source_fingerprint': fingerprint, 'failures': failures,
+                    atomic_write(failure_state, json.dumps({'source_fingerprint': known, 'failures': failures,
                                  'failed_at_epoch': time.time(), 'retry_after_epoch': retry_after,
                                  'error_type': type(error).__name__}, indent=2).encode('utf-8'))
                 for path in (run_dir / 'run.status.json', args.source / 'job-status.json'):
