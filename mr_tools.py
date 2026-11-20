@@ -39,6 +39,8 @@ RERANK_MAXWIN = int(os.environ.get("MR_RERANK_MAXWIN", "2"))      # base 每块�
 RERANK_FALLBACK_G = int(os.environ.get("MR_RERANK_FALLBACK_G", "5"))
 MIN_BM25 = {"notes": float(os.environ.get("MR_MIN_BM25", "8")), "pdf": float(os.environ.get("MR_MIN_BM25_PDF", "12"))}
 
+GET_MAX_CHARS = int(os.environ.get("MR_GET_MAX_CHARS", "20000"))
+GET_OUTLINE = 80
 LOG_PATH = os.path.join(mr_index.CACHE, "query-log.jsonl")
 LOG_ON = os.environ.get("MR_LOG", "1").lower() not in ("0", "false", "no")
 LOG_SRC = "cli"
@@ -103,8 +105,11 @@ def _rebuild(reason):
     old_n = len(_STATE.get("chunks", []))
     skip = _lazy_skip()
     sig = mr_corpus.signature(skip=skip)
-    chunks = mr_corpus.load_chunks(skip=skip, cache=_STATE.setdefault("files", {}))
-    _STATE["chunks"] = chunks
+    problems = []
+    chunks = mr_corpus.load_chunks(skip=skip, cache=_STATE.setdefault("files", {}), problems=problems)
+    for problem in problems:
+        print("[corpus] 跳过 %s/%s:%s" % (problem["source"], problem["file"], problem["error"]), file=sys.stderr)
+    new = {"chunks": chunks, "skipped": problems, "sig": sig}
     mr_index.BM25.retain({(c.get("source"), c["md5"]) for c in chunks})   # 语料反复增删时别无限涨
     # Observability only: never use gold labels to filter, score or classify a hit.
     # Warn again after each changed corpus, including startup; failures do not
@@ -121,9 +126,9 @@ def _rebuild(reason):
     except (OSError, ValueError, KeyError, TypeError):
         status, count = "unavailable", None
         print("[corpus-audit] audit unavailable; retrieval continues without a clean-corpus claim", file=sys.stderr)
-    _STATE["corpus_audit"] = {"status": status, "findings": count,
-                              "ms": round((time.perf_counter() - started) * 1000, 2)}
-    _STATE["corpus_sha256"] = hashlib.sha256(json.dumps(
+    new["corpus_audit"] = {"status": status, "findings": count,
+                           "ms": round((time.perf_counter() - started) * 1000, 2)}
+    new["corpus_sha256"] = hashlib.sha256(json.dumps(
         [(c["source"], c["md5"], c.get("purpose", "knowledge")) for c in chunks],
         ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
     notes_idx = [i for i, c in enumerate(chunks) if c["source"] in mr_corpus.DEFAULT_SOURCES]
@@ -131,18 +136,20 @@ def _rebuild(reason):
     nonpdf_idx = [i for i, c in enumerate(chunks) if c["source"] != "pdf"]
     pdf_idx = [i for i, c in enumerate(chunks) if c["source"] == "pdf"]
     work_idx = [i for i, c in enumerate(chunks) if c["source"] == "work"]
-    _STATE["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx, "work": work_idx}
-    _STATE["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认源,统计不含 stock/评测复盘
-    _STATE["bm25_work"] = _SubBM25(chunks, work_idx) if work_idx else None   # source=work 单查:工作笔记自己的 IDF
+    new["idx"] = {"notes": notes_idx, "pdf": pdf_idx, "nonpdf": nonpdf_idx, "work": work_idx}
+    new["bm25"] = _SubBM25(chunks, ordinary_idx)                      # 默认源,统计不含 stock/评测复盘
+    new["bm25_work"] = _SubBM25(chunks, work_idx) if work_idx else None   # source=work 单查:工作笔记自己的 IDF
     pdf_knowledge = [i for i in pdf_idx if chunks[i].get("purpose") != "evaluation"]
-    _STATE["bm25_pdf"] = _SubBM25(chunks, pdf_knowledge) if pdf_idx else None
-    for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation", "bm25_pdf_evaluation"):
-        _STATE.pop(key, None)   # 混合/PDF、股票原统计、含评测笔记的统计均按需重建
+    new["bm25_pdf"] = _SubBM25(chunks, pdf_knowledge) if pdf_idx else None
+    vecs = {}
     for slug, v in list(_STATE.get("vecs", {}).items()):   # 每个已装的模型都增量重建:md5 缓存只算新块,模型实例复用
-        _STATE["vecs"][slug] = (_SubVec(chunks, pdf_idx, model=v._model, spec=v.spec)
-                                 if getattr(v, 'scope', None) == 'pdf'
-                                 else mr_index.VecIndex(chunks, model=v._model, spec=v.spec))
-    _STATE["sig"] = sig
+        vecs[slug] = (_SubVec(chunks, pdf_idx, model=v._model, spec=v.spec)
+                      if getattr(v, 'scope', None) == 'pdf'
+                      else mr_index.VecIndex(chunks, model=v._model, spec=v.spec))
+    for key in ("bm25_all", "bm25_nonpdf", "bm25_evaluation", "bm25_pdf_evaluation", "stale"):
+        _STATE.pop(key, None)   # 混合/PDF、股票原统计、含评测笔记的统计均按需重建
+    _STATE.update(new)
+    _STATE.setdefault("vecs", {}).update(vecs)
     print("[reload] %s:语料 %d→%d 块%s" % (reason, old_n, len(chunks),
           (",按需源未装:" + ",".join(sorted(skip))) if skip else ""), file=sys.stderr)
 
@@ -162,7 +169,11 @@ def _ensure(mode, model=None, vec_scope=None, need=None):
         elif now - _STATE.get("sig_at", 0) >= RELOAD_SEC:
             _STATE["sig_at"] = now
             if mr_corpus.signature(skip=_lazy_skip()) != _STATE.get("sig"):
-                _rebuild("检测到文件变化")
+                try:
+                    _rebuild("检测到文件变化")
+                except Exception as error:
+                    _STATE["stale"] = "%s: %s" % (type(error).__name__, error)
+                    print("[reload] 重建失败,继续用上一份索引:%s" % _STATE["stale"], file=sys.stderr)
         if mode in ("vec", "hybrid"):
             # 一键切换:每个模型各建各的向量层,按 slug 存在 _STATE["vecs"],切回来不重算;没权重的模型 available=False,查询时回退 bm25
             spec = mr_index.model_spec(model)
@@ -434,7 +445,12 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
         hits = []
     if any(h["purpose"] == "evaluation" for h in hits):
         note = (note + ";" if note else "") + "包含评测复盘:其中的样例问题不代表事实答案,请核对正文用途"
-    _log({"tool": "search", "q": query, "mode": mode, "source": source, "model": used_model, "topk": topk, "n": len(hits),
+    if st.get("skipped"):
+        note = (note + ";" if note else "") + "⚠️ %d 个文件的 rag_purpose 标签无效,没有入库:%s" % (
+            len(st["skipped"]), ", ".join(p["file"] for p in st["skipped"][:3]))
+    if st.get("stale"):
+        note = (note + ";" if note else "") + "⚠️ 语料有改动但重建失败,结果来自改动前的索引(%s)" % st["stale"]
+    _log({"tool": "search", "q": mr_corpus.redact(query), "mode": mode, "source": source, "model": used_model, "topk": topk, "n": len(hits),
           "top": ["%s#%s" % (h["file"], h["heading"]) for h in hits[:3]], "legs": [h.get("legs") for h in hits[:3]],
           "confidence": confidence, "gate": gate, "rerank": rr, "note": note or None,
           "include_evaluation": include_evaluation})
@@ -447,7 +463,12 @@ def memory_search(query, mode="hybrid", topk=5, source=None, include_pdf=False, 
 
 def memory_get(file, source=None, heading=None, chunk_md5=None):
     r = _memory_get(file, source, heading, chunk_md5)
-    _log({"tool": "get", "file": os.path.basename(file), "source": r.get("source") or source, "ok": r.get("ok")})
+    if r.get("ok") and "heading" not in r and "page" not in r and 0 < GET_MAX_CHARS < len(r["text"]):
+        outline = list(dict.fromkeys(head for head, _ in mr_corpus._split_heading(r["text"])))
+        r = dict(r, text=r["text"][:GET_MAX_CHARS], truncated=True, total_chars=len(r["text"]),
+                 headings=outline[:GET_OUTLINE], heading_count=len(outline),
+                 note="全文 %d 字,只返回前 %d 字;其余按 headings 里的标题用 heading 参数读" % (len(r["text"]), GET_MAX_CHARS))
+    _log({"tool": "get", "file": (r.get("file") or str(file))[:200], "source": r.get("source") or source, "ok": r.get("ok")})
     return r
 
 
@@ -589,7 +610,8 @@ REGISTRY = {
     },
     "memory_get": {
         "fn": memory_get,
-        "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;heading 优先精确匹配,唯一前缀也可;歧义时返回候选标题。",
+        "desc": "取笔记/记忆/股票历史判断全文。把 memory_search 的 file/source 原样传入;heading 优先精确匹配,唯一前缀也可;歧义时返回候选标题。"
+                "全文超过 2 万字只返回开头并附 headings 目录(truncated=true),其余按 heading 读。",
         "schema": {"type": "object", "properties": {
             "file": {"type": "string", "description": "文件名,来自 memory_search 结果的 file 字段;教材原文写成「xxx.pdf#p81」取那一页 ±1"},
             "source": {"type": "string", "enum": ["case", "book", "mem", "pdf", "stock", "work"]},

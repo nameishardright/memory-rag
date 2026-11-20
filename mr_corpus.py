@@ -450,7 +450,7 @@ def _file_blocks(src, fn, path):
     return frontmatter_purpose(text), blocks
 
 
-def load_chunks(skip=frozenset(), cache=None):
+def load_chunks(skip=frozenset(), cache=None, problems=None):
     """skip = 不装的源(按需源还没被查过);块的先后仍按 SOURCES 顺序,装上后与全量装载完全相同。"""
     chunks = []
     purposes = load_purposes()
@@ -480,7 +480,13 @@ def load_chunks(skip=frozenset(), cache=None):
                 if cache is not None:
                     cache[(src["key"], fn)] = entry
             live.add((src["key"], fn))
-            purpose = labelled_purpose(src["key"], fn, entry[1], purposes)
+            try:
+                purpose = labelled_purpose(src["key"], fn, entry[1], purposes)
+            except ValueError as error:
+                if problems is None:
+                    raise
+                problems.append({"source": src["key"], "file": fn, "error": str(error)})
+                continue
             for head, body, chunk_id, md5, dup in entry[2]:
                 if seen is not None:
                     if dup in seen:

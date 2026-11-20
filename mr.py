@@ -200,7 +200,7 @@ def cmd_log(days, src):
     if zero:
         print("\n0 命中(%d)——语料缺口或阴性题候选:" % len(zero))
         for r in zero[-20:]:
-            print("  %s  %s  [%s%s]" % (r["ts"][5:16], r["q"][:50], r.get("mode"), (" " + r["source"]) if r.get("source") else ""))
+            print("  %s  %s  [%s%s]" % (r["ts"][5:16], mr_corpus.redact(r["q"])[:50], r.get("mode"), (" " + r["source"]) if r.get("source") else ""))
     cands = []
     for sr in searches:
         if not sr.get("top"):
@@ -209,7 +209,7 @@ def cmd_log(days, src):
         hit_files = [t.split("#", 1)[0] for t in sr["top"]]
         for g in gets:
             if t0 <= g["ts"] <= _plus(t0, 120) and g.get("file") in hit_files:
-                cands.append({"q": sr["q"], "expect": [g["file"]], **({"source": sr["source"]} if sr.get("source") else {})})
+                cands.append({"q": mr_corpus.redact(sr["q"]), "expect": [g["file"]], **({"source": sr["source"]} if sr.get("source") else {})})
                 break
     seen, uniq = set(), []
     for c in cands:
