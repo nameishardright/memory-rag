@@ -33,6 +33,24 @@ class RedactionContractTests(unittest.TestCase):
         text='`example.com:47021` 19:57:53 http://example.com:8080 token_count=512 max_tokens=2048'
         self.assertEqual(mr_corpus.redact(text),text)
 
+    def test_paths_and_plain_urls_in_backticks_are_kept(self):
+        text=('脚本在 `C:\\Users\\zihao\\scratchpad\\run-20261028\\a.ps1`，账号配置见 `D:/conf/app2.yml`；'
+              '接口 `https://api.example.com/v3/tasks/{id}` 和 `wss://example.com/socket1`')
+        self.assertEqual(mr_corpus.redact(text),text)
+        self.assertEqual(mr_corpus.redact(mr_corpus.redact(text)),text)
+
+    def test_urls_that_may_carry_access_stay_redacted(self):
+        for value in ('https://example.com/share?sig=Abc12345','https://reader@example.com/repo1',
+                      'https://example.com/hooks/T0000/B0000/Zx9Zx9Zx9Zx9Zx9Zx9Zx9Zx9'):
+            clean=mr_corpus.redact('地址 `%s`' % value)
+            self.assertNotIn(value.split('//')[1],clean)
+            self.assertIn('`https:<REDACTED>`',clean)
+
+    def test_inline_login_next_to_a_path_is_still_redacted(self):
+        clean=mr_corpus.redact('新账号 `reader:Example12345` 配置在 `C:\\conf\\app2.yml`，另一个 `c:Example12345`')
+        self.assertNotIn('Example12345',clean)
+        self.assertIn('`C:\\conf\\app2.yml`',clean)
+
     def test_compound_credential_names_keep_legacy_redaction_coverage(self):
         text='access_token=Demo12345 OPENAI_API_KEY="Example12345" X-API-Key: ThirdExample678'
         clean=mr_corpus.redact(text)

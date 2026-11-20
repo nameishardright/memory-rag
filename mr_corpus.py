@@ -299,12 +299,25 @@ RE_AUTH_HEADER = re.compile(r"(?i)(\b(?:Authorization|Proxy-Authorization)[\"']?
 RE_BARE_KEY = re.compile(r"\b(sk-|AKID|AKIA|LTAI)[A-Za-z0-9_-]{12,}")
 
 
+RE_DRIVE = re.compile(r"[A-Za-z]")
+RE_URL_SCHEME = re.compile(r"(?i)https?|wss?|ftp|file")
+RE_URL_ACCESS = re.compile(r"[?&=@]|[A-Za-z0-9_-]{24,}")
+
+
+def _plain_location(key, value):
+    if RE_DRIVE.fullmatch(key):
+        return value[0] in "\\/"
+    return bool(RE_URL_SCHEME.fullmatch(key)) and value.startswith("//") and not RE_URL_ACCESS.search(value)
+
+
 def redact(text):
     text = RE_BARE_KEY.sub(lambda m: m[1] + '<REDACTED>', text)
     text = RE_URL_LOGIN.sub(lambda m: m[1] + '<REDACTED>' + m[3], text)
     text = RE_AUTH_HEADER.sub(lambda m: m[1] + '<REDACTED>', text)
     def inline(match):
         value = match[2]
+        if _plain_location(match[1], value):
+            return match[0]
         nearby = text[max(0, match.start()-60):match.start()]
         credential_context = re.search(r"(?i)账号|账户|凭据|账密|认证|password|credential|auth", nearby)
         mixed_value = re.search(r'[A-Za-z]', value) and re.search(r'[0-9!$%^&*+=]', value)
