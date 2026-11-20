@@ -8,6 +8,7 @@
 
 改动见[变更记录](CHANGELOG-RAG.md)第一节：新一代先写成候选、验收通过才换成正式库，失败和缺口退避重试，向量准备的中途保存，后台进程重启前核对部署清单。
 
+- 资料源电脑在运行 Finish-Update 之前先重启一次。旧版后台如果还留在内存里，会和新版同时写库；重启后一定没有。Finish-Update 第 3 步也会查，查不清楚就停下不做。
 - 部署步骤和 11-05 相同：先放 `stop.request`，文件按 `mr_corpus.py`、其余文件、`mr_private*.py` 的顺序写入，`app-manifest.json` 最后写。随附的 markdown-it-py 和 mdurl 没有变化，不重写，只核对哈希。
 - 根目录的 `Finish-Update.cmd` 改为运行 `updates/20261120/finish_update.py`，步骤与 11-05 版相同，只是核对新的部署提交。11-05 版只认旧提交，留作历史。
 - 这次导入第一次走「候选 → 验收 → 切换」。验收不过时 `corpus.enc` 保持原样，Finish-Update 第 5 步报失败，汇总原因（只有计数）写进 `updates/20261120/finish-result.json`，根目录另有 `verification-rejected.json`。旧的检索照常可用。

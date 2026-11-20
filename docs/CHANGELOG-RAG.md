@@ -21,6 +21,7 @@
 | 维护循环：发现 `mr_private*.py` 变了，先核 `app-manifest.json` 里 `sha256` 和 `vendored` 列的每个文件，全部对上才重启；没对上、清单里一个文件都没列、或代码文件正被占用读不出来，就等（启动时读不出来重试约一分钟），状态 `waiting_for_deployment`，期间不跑更新 | OneDrive 只同步了一半时不会重启到半新半旧的代码。🔴 手工改 app 里的文件而不更新清单，后台会一直等 |
 | 后台进程刚启动时也核一次清单，不只在代码变了以后；`Start-Updates`（`mr_private_updates.py`）启动前先核清单，没同步完就不启动，也不动停止标记；两个 Start 同时点只有一个生效 | 应用只同步了一半时，新版启动器不会把后台拉起来。没有收集器的电脑上双击 Start-Updates 不再删掉 `stop.request` |
 | `stop.request` 只由启动入口（Start-Updates、Finish-Update）在启动前清；维护脚本自己启动时不再清。只有确认旧版 watcher 还在跑时才用这个标记去停它 | 入口检查之后、子进程起来之前点的停止不会丢：子进程看到标记就退出。代价：手工运行 `mr_private_maintenance.py` 前要自己删掉遗留的 `stop.request` |
+| 查进程失败不再等于「没有进程」：`mr_private_updates.running_processes` 和停旧版 watcher 的查询都让 PowerShell 遇错即停；`watcher.status.json` 读不出来时启动失败；发了强停之后旧 watcher 还在就报错 | 旧版后台不认新版的锁，也是先发布后验收，不能和新版同时写库。确认不了它已经退出时宁可不启动 |
 | `deployment_complete`：没有 `app-manifest.json` 时，只有源码检出目录（有 `.git`）算完整 | 部署目录里清单还没同步到时不放行 |
 | 维护循环：算指纹本身失败时，保留原来那份源的待重试记录；源回到已经处理过的状态时，清掉过时的失败记录 | 一次短暂的文件占用不会把待重试抹掉 |
 | `import_journals`：没有变化的轮次也回收 24 小时前、正式根不引用的分区 | 中断留下的孤儿分区不用等到下一次内容变化 |
