@@ -306,11 +306,20 @@ def prune_generated_partitions(store, password, protected, max_age=86400):
     return removed
 
 
+REPLACE_ATTEMPTS = 20
+REPLACE_WAIT = .25
+
+
+def review_path(store):
+    store = Path(store)
+    return store.with_name('coverage-review.candidate.enc' if store.stem.endswith('.candidate') else 'coverage-review.enc')
+
+
 def candidate_files(store):
     store = Path(store)
     root = store.with_name(store.stem + '.candidate' + store.suffix)
     return [(root.with_suffix('.status.json'), store.with_suffix('.status.json')),
-            (store.with_name('coverage-review.candidate.enc'), store.with_name('coverage-review.enc')),
+            (review_path(root), review_path(store)),
             (root, store)]
 
 
@@ -321,14 +330,60 @@ def _candidate_caches(store):
             for path in store.parent.glob(glob.escape(prefix) + '*' + store.suffix)]
 
 
+def _replace(origin, target):
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            os.replace(origin, target)
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(REPLACE_WAIT)
+
+
 def promote_candidate(store):
-    for candidate, final in _candidate_caches(store) + candidate_files(store):
-        os.replace(candidate, final)
+    *sidecars, root = candidate_files(store)
+    _replace(*root)
+    stale = []
+    for candidate, final in sidecars:
+        try:
+            _replace(candidate, final)
+        except OSError:
+            stale.append(final.name)
+    for candidate, final in _candidate_caches(store):
+        try:
+            _replace(candidate, final)
+        except OSError:
+            continue
+    return stale
 
 
-def discard_candidate(store):
-    for candidate, _final in _candidate_caches(store) + candidate_files(store):
-        candidate.unlink(missing_ok=True)
+def discard_candidate(store, partitions=()):
+    store = Path(store)
+    targets = [candidate for candidate, _final in _candidate_caches(store) + candidate_files(store)]
+    targets += [store.with_name(name) for name in partitions if Path(name).name == name]
+    for path in targets:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+def unreferenced_partitions(store, password, names):
+    try:
+        live = {metadata.get('file') for metadata in load_store(store, password).get('shards', {}).values()}
+    except (OSError, ValueError, AttributeError, InvalidTag):
+        return []
+    return [name for name in names if name not in live]
+
+
+def _sidecars_current(store, password, updated_at):
+    try:
+        status = json.loads(store.with_suffix('.status.json').read_text(encoding='utf-8'))
+        return (bool(updated_at) and status.get('updated_at') == updated_at
+                and load_store(review_path(store), password).get('updated_at') == updated_at)
+    except (OSError, ValueError, AttributeError, InvalidTag):
+        return False
 
 
 def import_journals(source, store, password, partitioned=False, policy=None, staged=False):
@@ -345,7 +400,7 @@ def import_journals(source, store, password, partitioned=False, policy=None, sta
         previous_payload = load_store(store, password)
         previous_partitions = previous_payload.get('shards', {})
         previous_root = {key: previous_payload.get(key) for key in
-                         ('content_sha256', 'coverage', 'updated_at', 'generation', 'tokenizer')}
+                         ('content_sha256', 'coverage', 'updated_at', 'generation', 'tokenizer', 'source', 'review_sha256')}
         del previous_payload
     latest, current, inventory, narrative, external_inventories = {}, {}, None, None, {}
     archive_inventories = {}
@@ -497,7 +552,11 @@ def import_journals(source, store, password, partitioned=False, policy=None, sta
             'source_root': inventory.get('root'),
             'policy_sha256': policy_signature(policy), 'partitioned': partitioned,
             'coverage': coverage, 'mode': 'bm25_inverted', 'tokenizer': PRIVATE_TOKENIZER}
-    partitions, total_chunks = {}, 0
+    partitions, total_chunks, created = {}, 0, []
+    review = {'gaps': gap_rows, 'not_processed': sorted(eligible - set(latest))}
+    review_digest = hashlib.sha256(json.dumps(
+        {'gaps': sorted(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in gap_rows),
+         'not_processed': review['not_processed']}, ensure_ascii=False).encode('utf-8')).hexdigest()
     if partitioned:
         for scope in SCOPES:
             docs = [d for d in documents if d['scope'] == scope]
@@ -518,6 +577,7 @@ def import_journals(source, store, password, partitioned=False, policy=None, sta
             elif docs:
                 filename = store.stem + '.' + generation + '.' + scope + '.enc'
                 path = store.with_name(filename)
+                created.append(filename)
                 save_store(path, password, part)
                 partitions[scope] = {'file': filename, 'documents': len(docs), 'chunks': len(chunks),
                                      'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -531,31 +591,33 @@ def import_journals(source, store, password, partitioned=False, policy=None, sta
     coverage['default_documents'] = sum(d['scope'] == 'personal' for d in documents)
     coverage['default_chunks'] = len(payload['chunks']) if partitioned else sum(c['scope'] == 'personal' for c in payload['chunks'])
     payload.update({
-               "source_signature": signature,
+               "source_signature": signature, "review_sha256": review_digest,
                "coverage": coverage, "mode": "bm25", "tokenizer": PRIVATE_TOKENIZER}
     )
     if (partitioned and previous_root.get('content_sha256') == payload.get('content_sha256')
             and previous_partitions == partitions and previous_root.get('coverage') == coverage
-            and previous_root.get('tokenizer') == PRIVATE_TOKENIZER):
+            and previous_root.get('tokenizer') == PRIVATE_TOKENIZER and previous_root.get('source') == str(source)
+            and previous_root.get('review_sha256') == review_digest
+            and _sidecars_current(store, password, previous_root['updated_at'])):
         payload.update(updated_at=previous_root['updated_at'], generation=previous_root['generation'], unchanged=True)
+        prune_generated_partitions(store, password, {metadata['file'] for metadata in previous_partitions.values()})
         return payload
-    (status_path, _), (review_path, _), (root, _) = (candidate_files(store) if staged else
+    (status_path, _), (review_file, _), (root, _) = (candidate_files(store) if staged else
                                                     [(p, p) for _c, p in candidate_files(store)])
     # Publish the root last: readers either see the previous generation or a
     # complete new generation; never a mixture of sidecar partitions.
     save_store(root, password, payload)
     status = {k: payload[k] for k in ("version", "updated_at", "coverage", "mode", "tokenizer")}
     atomic_write(status_path, json.dumps(status, indent=2).encode("utf-8"))
-    save_store(review_path, password,
-               {'version': 1, 'updated_at': payload['updated_at'], 'coverage': coverage,
-                'gaps': gap_rows,
-                'not_processed': sorted(eligible - set(latest))})
+    save_store(review_file, password,
+               {'version': 1, 'updated_at': payload['updated_at'], 'coverage': coverage, **review})
     if partitioned:
         protected = {metadata['file'] for metadata in [*partitions.values(), *previous_partitions.values()]}
         retired = prune_generated_partitions(store, password, protected)
         atomic_write(store.with_name('index-retention.status.json'), json.dumps({'updated_at': now(),
                      'retired_generated_partitions': retired, 'minimum_age_hours': 24,
                      'current_and_previous_references_protected': True}).encode('utf-8'))
+    payload['created_partitions'] = created
     return payload
 
 

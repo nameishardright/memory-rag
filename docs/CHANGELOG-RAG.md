@@ -8,16 +8,27 @@
 
 | 改动 | 效果 |
 |---|---|
-| `mr_private.import_journals(staged=True)` + `mr_private_maintenance.cycle`：库已存在时，新一代先写成 `corpus.candidate.enc`（连同 `corpus.candidate.status.json`、`coverage-review.candidate.enc`），对候选跑 `verify_live`，通过后再换成正式文件 | 验证不过：候选删掉，`corpus.enc` 和 `verification.json` 保持上一份，失败报告写到 `verification-rejected.json` 和运行目录的 `live-verification.json`。界面不会再加载没通过验收的库。首次发布（库还不存在）仍直接写 |
-| `mr_private_maintenance.py --once`：库已存在时不再先做一次直接导入，只走上面那条先验收的路 | Finish-Update 用的就是 `--once`。以前这一步会把还没验收的新一代直接写成正式库。代价：收录规则变了以后，要等收集完、验收过，正式库才换成新规则筛过的内容。首次建库（库还不存在）仍先发布一次 |
-| `import_journals`：个人分区指纹、各分区引用、覆盖统计都没变时不发布，返回值带 `unchanged: true` | 不再每轮重写 `corpus.enc`（新盐、新随机数，字节全变）；OneDrive 不用整库重传，界面不用整库重新解密。库没变且上一次验收通过时，本轮也不重跑验证 |
-| 维护循环：一轮失败后写 `maintenance-failure.json`，同一份源按 2、4、8……倍间隔重试，上限 6 小时；源变了立即重试；成功后清掉 | 不再每 5 分钟整轮重跑。`watcher.status.json` 新增状态 `backing_off` |
+| `mr_private.import_journals(staged=True)` + `mr_private_maintenance.cycle`：库已存在时，新一代先写成 `corpus.candidate.enc`（连同 `corpus.candidate.status.json`、`coverage-review.candidate.enc`），对候选跑 `verify_live`，通过后再换成正式文件。切换时先换根文件，再换状态文件和核对清单；文件被占用时重试约 5 秒 | 验证不过或验收过程出错：候选删掉，这一轮新写的分区文件也一起删（先解密正式根看它实际引用了哪些分区，引用着的不删，根读不出来就都不删），`corpus.enc` 和 `verification.json` 保持上一份，失败报告写到 `verification-rejected.json` 和运行目录的 `live-verification.json`。根文件换不上时什么都不变。界面不会再加载没通过验收的库。首次发布（库还不存在）仍直接写 |
+| 验收候选时，界面检查读的是候选自己的核对清单（`mr_private.review_path`） | 以前固定读正式的 `coverage-review.enc`，候选的清单坏了也查不出来 |
+| `mr_private_maintenance.cycle`：整轮持有一把按库路径取名的本机锁（`%LOCALAPPDATA%\memory-rag\locks\`），同一份库同一时间只跑一轮，首次建库也在锁里并且拿到锁后再看一次库是否已存在；每轮开头先清掉上次遗留的候选文件 | 两个维护进程不会互相覆盖候选，也就不会出现「验收的是一份、换上去的是另一份」。拿不到锁的那一轮按失败退避 |
+| 状态文件或核对清单没换成（根已经换了）：本轮报失败；下一轮发现它们和根不是同一代，整代重发并重新验收 | 不会长期停在「根是新的、清单是旧的」 |
+| `mr_private_maintenance.py --once`：库已存在时不再先做一次直接导入，只走上面那条先验收的路 | Finish-Update 用的就是 `--once`。以前这一步会把还没验收的新一代直接写成正式库。代价：收录规则变了以后，要等收集完、验收过，正式库才换成新规则筛过的内容。首次建库（库还不存在）仍先发布一次。一次性运行还没跑成一轮就被停止时，运行状态写 `stopped`，不会留着上一轮的 `complete` |
+| `import_journals`：个人分区指纹、各分区引用、覆盖统计、核对清单明细的摘要（根里新增 `review_sha256`）、收集器位置都没变，并且状态文件和核对清单与根是同一代时不发布，返回值带 `unchanged: true` | 不再每轮重写 `corpus.enc`（新盐、新随机数，字节全变）；OneDrive 不用整库重传，界面不用整库重新解密。缺口数量相同但换了一批文件时，清单照常更新 |
+| 跳过验收的条件：库没变，并且 `verification.json` 是通过的、里面的 `snapshot_updated_at` 等于实际解密出的根的 `updated_at` | 以前比的是状态文件，状态文件和根对不上时可能把没验收的根当成已验收 |
+| 维护循环：一轮失败后写 `maintenance-failure.json`，同一份源按 2、4、8……倍间隔重试，上限 6 小时；源变了立即重试；上一次失败的就是这份源时，退避到期后一定再试，不管检查点怎么说；成功后清掉 | 不再每 5 分钟整轮重跑。`watcher.status.json` 新增状态 `backing_off` |
 | 维护循环：可重试缺口没变时，按 1、2、4、8、16、24 小时重试（`maintenance-checkpoint.json` 新增 `gap_retries`）；缺口数或源变了归零 | 永久读不了的文件不再每小时触发一轮 |
 | 维护循环：读检查点和算指纹挪进 try，检查点读不出来按空处理 | 这两步出错不再让后台进程退出 |
-| 维护循环：发现 `mr_private*.py` 变了，先核 `app-manifest.json` 里 `sha256` 和 `vendored` 列的每个文件，全部对上才重启；没对上就等，状态 `waiting_for_deployment`，期间不跑更新 | OneDrive 只同步了一半时不会重启到半新半旧的代码。🔴 手工改 app 里的文件而不更新清单，后台会一直等 |
-| `mr_private_semantic.PrivateVector.prepare`：中途保存改成「新编码满 512 个窗口或距上次保存满 60 秒」，并且至少隔上次保存耗时的 10 倍 | 以前要总行数恰好是 512 的倍数才存，前面有可复用窗口时可能很久不存。假编码器实测：20 万窗口、每行保存 0.1 毫秒时，保存 391 次 → 58 次，累计重写 3,924 万行 → 285 万行；一次中断最多丢 60 秒或 10 倍保存耗时的工作 |
+| 维护循环：发现 `mr_private*.py` 变了，先核 `app-manifest.json` 里 `sha256` 和 `vendored` 列的每个文件，全部对上才重启；没对上、清单里一个文件都没列、或代码文件正被占用读不出来，就等（启动时读不出来重试约一分钟），状态 `waiting_for_deployment`，期间不跑更新 | OneDrive 只同步了一半时不会重启到半新半旧的代码。🔴 手工改 app 里的文件而不更新清单，后台会一直等 |
+| 后台进程刚启动时也核一次清单，不只在代码变了以后；`Start-Updates`（`mr_private_updates.py`）启动前先核清单，没同步完就不启动，也不动停止标记；两个 Start 同时点只有一个生效 | 应用只同步了一半时，新版启动器不会把后台拉起来。没有收集器的电脑上双击 Start-Updates 不再删掉 `stop.request` |
+| `stop.request` 只由启动入口（Start-Updates、Finish-Update）在启动前清；维护脚本自己启动时不再清。只有确认旧版 watcher 还在跑时才用这个标记去停它 | 入口检查之后、子进程起来之前点的停止不会丢：子进程看到标记就退出。代价：手工运行 `mr_private_maintenance.py` 前要自己删掉遗留的 `stop.request` |
+| `deployment_complete`：没有 `app-manifest.json` 时，只有源码检出目录（有 `.git`）算完整 | 部署目录里清单还没同步到时不放行 |
+| 维护循环：算指纹本身失败时，保留原来那份源的待重试记录；源回到已经处理过的状态时，清掉过时的失败记录 | 一次短暂的文件占用不会把待重试抹掉 |
+| `import_journals`：没有变化的轮次也回收 24 小时前、正式根不引用的分区 | 中断留下的孤儿分区不用等到下一次内容变化 |
+| `mr_private_semantic.PrivateVector.prepare`：中途保存改成「新编码满 512 个窗口或距上次保存满 60 秒」，并且至少隔上次保存耗时的 10 倍 | 以前要总行数恰好是 512 的倍数才存，前面有可复用窗口时可能很久不存。假编码器实测：20 万窗口、每行保存 0.1 毫秒时，保存 391 次 → 58 次，累计重写 3,924 万行 → 285 万行；保存检查只在一批新编码完成时做：连续有新编码时，两次保存之间不超过 60 秒和 10 倍保存耗时里较大的那个再加一个批次；只复用旧窗口的阶段不检查，保存本身很慢时间隔相应拉长，所以没有对所有中断都成立的时间上限 |
 
-没改：界面的 10 分钟空闲锁（长任务用命令行 `prepare --scope`）；验证本身仍是整套重跑；范围策略误排除个人目录那条要在资料源电脑上按路径清单核过再动。
+没改：界面的 10 分钟空闲锁（长任务用命令行 `prepare --scope`）；验证本身仍是整套重跑；范围策略误排除个人目录那条要在资料源电脑上按路径清单核过再动；算指纹本身失败时仍按轮询间隔重算（不跑整轮）；「应收未处理」和笔记采集不可用不算可重试缺口，源不变就不会自动再试；`mr_private_checkup.py` 和 `mr_private.py import` 这两个手动入口仍然直接写正式库，不经过候选、验收和锁；导入自己中途出错时已经写出的分区文件要等满 24 小时后、下一次走到回收的导入清理；同一个目录放两份不同名字的库不支持（它们共用核对清单和验收报告）；OneDrive 还没把新版同步过来时，磁盘上的旧版启动器和旧版维护脚本照旧逻辑跑（先发布后验收），新代码管不到，所以部署后第一次要用 Finish-Update，它第一步会核对同步。
+
+提交前由另一个 agent 复核过发布路径多轮，指出的问题里修了的各有单元检查，没修的列在上一段。
 
 ## 2026-11-05：代码块里的 `#` 行不再当标题（issue #2）
 

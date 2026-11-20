@@ -1,5 +1,6 @@
 """Collect, publish and verify the private corpus without archive packaging gates."""
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import importlib
@@ -9,11 +10,12 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 
 from mr_private import (atomic_write, candidate_files, discard_candidate, import_journals, load_private_rag,
-                        load_store, now, promote_candidate, read_journal, save_store)
+                        load_store, now, promote_candidate, read_journal, save_store, unreferenced_partitions)
 from mr_private_policy import classify, policy_signature, SCOPES
 
 
@@ -72,16 +74,59 @@ def deployment_complete(app=None):
     app = Path(app or Path(__file__).parent)
     manifest = app.parent / 'app-manifest.json'
     if not manifest.is_file():
-        return True
+        return (app / '.git').exists()
     try:
         listed = json.loads(manifest.read_text(encoding='utf-8'))
         expected = dict(listed['sha256'])
+        if not expected:
+            return False
         for package in listed.get('vendored', {}).values():
             expected.update(package['files'])
         return all(hashlib.sha256((app / name).read_bytes()).hexdigest() == digest
                    for name, digest in expected.items())
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return False
+
+
+def lock_path(store, purpose='cycle'):
+    root = Path(os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()) / 'memory-rag' / 'locks'
+    name = purpose + '|' + os.path.normcase(str(Path(store).resolve()))
+    return root / (hashlib.sha256(name.encode('utf-8')).hexdigest()[:32] + '.lock')
+
+
+@contextlib.contextmanager
+def single_writer(store, purpose='cycle'):
+    path = lock_path(store, purpose)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, 'a+b')
+    try:
+        handle.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise RuntimeError('Another maintenance cycle is running for this store' if purpose == 'cycle'
+                               else 'Another ' + purpose + ' is in progress for this store') from None
+        yield
+    finally:
+        handle.close()
+        if os.name == 'nt':
+            with contextlib.suppress(OSError):
+                path.unlink()
+
+
+def read_implementation(attempts=30):
+    for attempt in range(attempts):
+        try:
+            return implementation_signature()
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2)
 
 
 def read_state(path):
@@ -111,23 +156,26 @@ def run_script(source, name, args, password, run_dir):
 
 
 def stop_legacy_watcher(store):
+    pid = read_state(store.parent / 'watcher.status.json').get('pid')
+    if not pid or pid == os.getpid():
+        return
+    quoted = str(store).replace("'", "''")
+    match = ("$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
+             "if($ragTask -and $ragTask.CommandLine -and $ragTask.CommandLine.Contains('mr_private.py') "
+             "-and $ragTask.CommandLine.Contains('" + quoted + "')) { ")
+    found = subprocess.run(['powershell.exe', '-NoProfile', '-Command', match + "'legacy-watcher' }"], capture_output=True,
+                           text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+    if 'legacy-watcher' not in (found.stdout or ''):
+        return
     marker = store.parent / 'stop.request'
+    requested = marker.exists()
     marker.touch()
-    state = store.parent / 'watcher.status.json'
-    pid = None
-    if state.is_file():
-        pid = json.loads(state.read_text(encoding='utf-8')).get('pid')
-    if pid and pid != os.getpid():
-        quoted = str(store).replace("'", "''")
-        code = ("$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
-                "if($ragTask -and $ragTask.CommandLine -and $ragTask.CommandLine.Contains('mr_private.py') "
-                "-and $ragTask.CommandLine.Contains('" + quoted + "')) { "
-                "Start-Sleep -Seconds 2; $ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
-                "if($ragTask -and $ragTask.CommandLine.Contains('mr_private.py') -and $ragTask.CommandLine.Contains('" + quoted + "')) "
-                "{ Stop-Process -Id " + str(int(pid)) + " -Force } }")
-        subprocess.run(['powershell.exe', '-NoProfile', '-Command', code], capture_output=True,
-                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
-    if marker.exists(): marker.unlink()
+    code = (match + "Start-Sleep -Seconds 2; $ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
+            "if($ragTask -and $ragTask.CommandLine.Contains('mr_private.py') -and $ragTask.CommandLine.Contains('" + quoted + "')) "
+            "{ Stop-Process -Id " + str(int(pid)) + " -Force } }")
+    subprocess.run(['powershell.exe', '-NoProfile', '-Command', code], capture_output=True,
+                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+    if marker.exists() and not requested: marker.unlink()
 
 
 def partition_probe(documents):
@@ -269,6 +317,11 @@ def verify_native_ui(store, password):
 
 
 def cycle(source, store, password, run_dir):
+    with single_writer(store):
+        return _locked_cycle(source, store, password, run_dir)
+
+
+def _locked_cycle(source, store, password, run_dir):
     status = run_dir / 'run.status.json'
     job_status = source / 'job-status.json'
     for path in (status, job_status): update_status(path, 'collecting', phase='source_collection')
@@ -284,28 +337,33 @@ def cycle(source, store, password, run_dir):
     atomic_write(store.parent / 'onenote.status.json', json.dumps({'updated_at': now(), **notebook}, indent=2).encode('utf-8'))
     for path in (status, job_status): update_status(path, 'indexing', phase='publish_partitions', notebook=notebook)
     staged = store.is_file()
+    if staged: discard_candidate(store)
     payload = import_journals(source, store, password, partitioned=True, staged=staged)
     coverage, unchanged = payload['coverage'], bool(payload.get('unchanged'))
+    snapshot, created = payload.get('updated_at'), payload.get('created_partitions', ())
     del payload
     staged = staged and not unchanged
-    accepted = read_state(store.parent / 'verification.json')
-    if not (unchanged and accepted.get('passed') and accepted.get('snapshot_updated_at')
-            == read_state(store.with_suffix('.status.json')).get('updated_at')):
-        update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
-        try:
+    promoted, stale, verification = False, [], None
+    try:
+        accepted = read_state(store.parent / 'verification.json')
+        if not (unchanged and accepted.get('passed') and snapshot and accepted.get('snapshot_updated_at') == snapshot):
+            update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
             verification = verify_live(candidate_files(store)[-1][0] if staged else store, password)
-        except Exception:
-            if staged: discard_candidate(store)
-            raise
-        report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
-        atomic_write(run_dir / 'live-verification.json', report)
+            report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
+            atomic_write(run_dir / 'live-verification.json', report)
+            if staged and verification['passed']:
+                stale = promote_candidate(store)
+                promoted = True
+    finally:
+        if staged and not promoted:
+            discard_candidate(store, unreferenced_partitions(store, password, created))
+    if verification is not None:
         if staged and not verification['passed']:
-            discard_candidate(store)
             atomic_write(store.parent / 'verification-rejected.json', report)
             raise RuntimeError('Live private retrieval verification failed')
-        if staged: promote_candidate(store)
         atomic_write(store.parent / 'verification.json', report)
         if not verification['passed']: raise RuntimeError('Live private retrieval verification failed')
+        if stale: raise RuntimeError('Published generation is live but these files were not replaced: ' + ', '.join(stale))
     summary = {'coverage': coverage, 'verification_passed': True, 'notebook': notebook,
                'archive_packaging': 'Existing encrypted archive retained; archive packing is independent of RAG collection.'}
     update_status(status, 'complete_with_content_gaps' if coverage['content_gaps'] or notebook.get('state') not in
@@ -328,7 +386,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     password = sys.stdin.readline().rstrip('\r\n') if args.stdin_password else getpass.getpass('Archive password: ')
     args.source, args.store = args.source.resolve(), args.store.resolve()
-    loaded_implementation = implementation_signature()
+    loaded_implementation = read_implementation()
     run_dir = (args.run_dir or args.source / 'rag-maintenance').resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     if args.interval < 30: parser.error('Interval must be at least 30 seconds')
@@ -356,22 +414,30 @@ def main(argv=None):
         next(read_journal(args.source / 'core.enc', password))
         stop_legacy_watcher(args.store)
         source_marker = args.source / 'stop.request'
-        if source_marker.exists(): source_marker.unlink()
         if args.once and not args.store.is_file():
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
-            update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
-            payload = import_journals(args.source, args.store, password, partitioned=True)
-            del payload
+            with single_writer(args.store):
+                if not args.store.is_file():
+                    update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
+                    payload = import_journals(args.source, args.store, password, partitioned=True)
+                    del payload
+        completed, deployment_checked = False, args.once
         while not source_marker.exists():
             if (args.store.parent / 'stop.request').exists(): break
-            if not args.once and implementation_signature() != loaded_implementation:
-                if not deployment_complete():
+            try:
+                running_implementation = implementation_signature()
+            except OSError:
+                running_implementation = None
+            if not args.once and (running_implementation != loaded_implementation or not deployment_checked):
+                if running_implementation is None or not deployment_complete():
                     update_status(args.store.parent / 'watcher.status.json', 'waiting_for_deployment', pid=os.getpid())
                     for _ in range(args.interval):
                         if source_marker.exists(): break
                         time.sleep(1)
                     continue
+                deployment_checked = True
+            if not args.once and running_implementation != loaded_implementation:
                 command = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), '--source', str(args.source),
                            '--store', str(args.store), '--run-dir', str(run_dir), '--stdin-password',
                            '--interval', str(args.interval)]
@@ -387,14 +453,18 @@ def main(argv=None):
                 fingerprint = source_fingerprint(args.source)
                 previous = read_state(checkpoint)
                 changed = fingerprint != previous.get('source_fingerprint')
+                if failed and not changed and failed.get('source_fingerprint') not in (None, fingerprint):
+                    failure_state.unlink(missing_ok=True)
+                    failed = {}
                 gap_wait = min(GAP_RETRY_SECONDS * 2 ** int(previous.get('gap_retries', 0)), GAP_RETRY_CAP_SECONDS)
                 gap_due = (bool(previous.get('retryable_gaps', 0))
                            and time.time() - previous.get('checked_at_epoch', 0) >= gap_wait)
                 backing_off = (failed.get('source_fingerprint') == fingerprint
                                and time.time() < failed.get('retry_after_epoch', 0))
-                refresh = args.once or ((changed or gap_due) and not backing_off)
+                pending = bool(failed) and failed.get('source_fingerprint') == fingerprint
+                refresh = args.once or ((changed or gap_due or pending) and not backing_off)
                 update_status(args.store.parent / 'watcher.status.json',
-                              'updating' if refresh else 'backing_off' if changed or gap_due else 'monitoring',
+                              'updating' if refresh else 'backing_off' if changed or gap_due or pending else 'monitoring',
                               pid=os.getpid())
                 if refresh:
                     summary = cycle(args.source, args.store, password, run_dir)
@@ -408,14 +478,16 @@ def main(argv=None):
                                  'gap_retries': int(previous.get('gap_retries', 0)) + 1 if same_gaps else 0,
                                  'verified_at': now()}, indent=2).encode('utf-8'))
                     if failure_state.exists(): failure_state.unlink()
+                    completed = True
             except MaintenanceStopped:
                 update_status(run_dir / 'run.status.json', 'stopped')
                 return 0
             except Exception as error:
-                failures = int(failed.get('failures', 0)) + 1 if failed.get('source_fingerprint') == fingerprint else 1
+                known = fingerprint if fingerprint is not None else failed.get('source_fingerprint')
+                failures = int(failed.get('failures', 0)) + 1 if failed.get('source_fingerprint') == known else 1
                 retry_after = time.time() + min(args.interval * 2 ** failures, RETRY_CAP_SECONDS)
                 if not args.once:
-                    atomic_write(failure_state, json.dumps({'source_fingerprint': fingerprint, 'failures': failures,
+                    atomic_write(failure_state, json.dumps({'source_fingerprint': known, 'failures': failures,
                                  'failed_at_epoch': time.time(), 'retry_after_epoch': retry_after,
                                  'error_type': type(error).__name__}, indent=2).encode('utf-8'))
                 for path in (run_dir / 'run.status.json', args.source / 'job-status.json'):
@@ -428,6 +500,9 @@ def main(argv=None):
                 if _ % 30 == 0:
                     update_status(args.store.parent / 'watcher.status.json', 'running', pid=os.getpid())
                 time.sleep(1)
+        if args.once and not completed:
+            update_status(run_dir / 'run.status.json', 'stopped')
+            return 0
         if args.resume and args.once:
             command = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), '--source', str(args.source),
                        '--store', str(args.store), '--run-dir', str(run_dir / 'background'), '--stdin-password']
