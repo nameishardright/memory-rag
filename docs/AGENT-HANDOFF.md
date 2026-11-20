@@ -1,8 +1,19 @@
 # OneDrive 私有 RAG：agent 接手说明
 
-更新日期：2026-11-05。私有模块已合入 main（`5db082b`，PR #1）。issue #2 的修复在分支 `fix/issue-2-heading-split-in-code` 上；OneDrive 里实际运行哪个提交、各文件的 SHA-256，只以本机 `app-manifest.json` 为准。
+更新日期：2026-11-20。私有模块已合入 main（`5db082b`，PR #1）；issue #2 的修复（PR #3）和 11-20 的审计修复也在 main 上。OneDrive 里实际运行哪个提交、各文件的 SHA-256，只以本机 `app-manifest.json` 为准。
 
 先读本页和[变更记录](CHANGELOG-RAG.md)，再按[私有版使用指南](private-corpus.md)操作。这些文件只包含通用实现、操作路径和汇总结果。
+
+## 审计修复的部署方式（2026-11-20）
+
+改动见[变更记录](CHANGELOG-RAG.md)第一节：新一代先写成候选、验收通过才换成正式库，失败和缺口退避重试，向量准备的中途保存，后台进程重启前核对部署清单。
+
+- 部署步骤和 11-05 相同：先放 `stop.request`，文件按 `mr_corpus.py`、其余文件、`mr_private*.py` 的顺序写入，`app-manifest.json` 最后写。随附的 markdown-it-py 和 mdurl 没有变化，不重写，只核对哈希。
+- 根目录的 `Finish-Update.cmd` 改为运行 `updates/20261120/finish_update.py`，步骤与 11-05 版相同，只是核对新的部署提交。11-05 版只认旧提交，留作历史。
+- 这次导入第一次走「候选 → 验收 → 切换」。验收不过时 `corpus.enc` 保持原样，Finish-Update 第 5 步报失败，原因在根目录的 `verification-rejected.json`（只有汇总数字）。旧的检索照常可用。
+- 后台进程发现 `mr_private*.py` 变了以后，要等 `app-manifest.json` 列的文件全部对上才重启。以后不要手工改 `app` 里的文件而不更新清单，否则后台停在 `waiting_for_deployment`。
+- 三件事分开看证据：部署本身看 `updates/20261120/deployment-results.json`；资料源电脑是否同步完，看 Finish-Update 第一步的哈希核对；导入和检索检查看 `updates/20261120/finish-result.json`。
+- 回退：按 `updates/20261120/backup-14c3a1e/backup-manifest.json` 放回原件，删除 `updates/20261120`。部署电脑上的本地备份保留。
 
 ## issue #2 修复的部署方式（2026-11-05）
 

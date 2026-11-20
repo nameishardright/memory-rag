@@ -142,8 +142,12 @@ and Personal Vault require source access before their bodies can be collected.
 harvesting, partition publication and live verification. Full encrypted archive
 packing is independent and cannot prevent RAG updates. Existing packed archives keep
 their original coverage date. The background process checks source metadata and
-notebook changes every five minutes, skips unchanged data, and performs an hourly
-retry for coverage gaps. Reboot requires a fresh local password entry.
+notebook changes every five minutes and skips unchanged data. When a store already
+exists, a new generation is written as `corpus.candidate.enc`, verified, and only then
+replaces `corpus.enc`; a rejected candidate is deleted and its report is kept in
+`verification-rejected.json`. Coverage gaps are retried after one hour and then at
+doubling intervals up to a day; a failed cycle is retried at doubling intervals up to
+six hours. Reboot requires a fresh local password entry.
 
 ```powershell
 python scripts/setup_private_semantic.py
