@@ -156,16 +156,22 @@ def run_script(source, name, args, password, run_dir):
 
 
 def stop_legacy_watcher(store):
-    pid = read_state(store.parent / 'watcher.status.json').get('pid')
+    state = store.parent / 'watcher.status.json'
+    pid = json.loads(state.read_text(encoding='utf-8')).get('pid') if state.is_file() else None
     if not pid or pid == os.getpid():
         return
     quoted = str(store).replace("'", "''")
-    match = ("$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
+    match = ("$ErrorActionPreference='Stop'; "
+             "$ragTask=Get-CimInstance Win32_Process -Filter 'ProcessId=" + str(int(pid)) + "'; "
              "if($ragTask -and $ragTask.CommandLine -and $ragTask.CommandLine.Contains('mr_private.py') "
              "-and $ragTask.CommandLine.Contains('" + quoted + "')) { ")
-    found = subprocess.run(['powershell.exe', '-NoProfile', '-Command', match + "'legacy-watcher' }"], capture_output=True,
-                           text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
-    if 'legacy-watcher' not in (found.stdout or ''):
+
+    def alive():
+        found = subprocess.run(['powershell.exe', '-NoProfile', '-Command', match + "'legacy-watcher' }"], capture_output=True,
+                               text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+        return 'legacy-watcher' in (found.stdout or '')
+
+    if not alive():
         return
     marker = store.parent / 'stop.request'
     requested = marker.exists()
@@ -175,6 +181,8 @@ def stop_legacy_watcher(store):
             "{ Stop-Process -Id " + str(int(pid)) + " -Force } }")
     subprocess.run(['powershell.exe', '-NoProfile', '-Command', code], capture_output=True,
                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
+    if alive():
+        raise RuntimeError('The old watcher is still running')
     if marker.exists() and not requested: marker.unlink()
 
 

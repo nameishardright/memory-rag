@@ -381,6 +381,21 @@ class OnceTests(unittest.TestCase):
         self.assertEqual(len(answers), 2)
         self.assertFalse(any('Stop-Process' in command for command in answers))
 
+    def test_startup_fails_when_the_old_watcher_cannot_be_ruled_out(self):
+        state = self.output / 'watcher.status.json'
+        state.write_text('{not json', encoding='utf-8')
+        with patch('mr_private_maintenance.subprocess.run') as powershell:
+            with self.assertRaises(ValueError):
+                mr_private_maintenance.stop_legacy_watcher(self.store)
+            powershell.assert_not_called()
+        state.write_text(json.dumps({'pid': 999999}), encoding='utf-8')
+        alive = subprocess.CompletedProcess([], 0, stdout='legacy-watcher\n', stderr='')
+        with patch('mr_private_maintenance.subprocess.run', return_value=alive) as powershell:
+            with self.assertRaisesRegex(RuntimeError, 'still running'):
+                mr_private_maintenance.stop_legacy_watcher(self.store)
+        self.assertEqual(powershell.call_count, 3)
+        self.assertTrue((self.output / 'stop.request').is_file())
+
     def test_one_shot_run_that_is_stopped_before_its_cycle_says_so(self):
         journal(self.source, 'Synthetic family passport', '2026-01-01')
         self.assertEqual(self.run_once(True), (0, ['corpus.enc']))
@@ -609,6 +624,20 @@ class LauncherTests(unittest.TestCase):
         self.markers = [self.store.parent / 'stop.request', self.source / 'stop.request']
         for marker in self.markers:
             marker.touch()
+
+    def test_a_failed_process_query_is_an_error_not_an_empty_list(self):
+        import mr_private_updates
+        seen = []
+
+        def powershell(command, **options):
+            seen.append((command[-1], options.get('check')))
+            raise subprocess.CalledProcessError(1, command)
+
+        with patch('mr_private_updates.subprocess.run', side_effect=powershell):
+            with self.assertRaises(subprocess.CalledProcessError):
+                mr_private_updates.running_processes('mr_private_maintenance.py', str(self.source))
+        self.assertIn("$ErrorActionPreference='Stop'", seen[0][0])
+        self.assertTrue(seen[0][1])
 
     def test_start_refuses_a_half_synced_app_and_keeps_the_stop_markers(self):
         start, output = self.launch(False)

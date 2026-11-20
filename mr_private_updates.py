@@ -11,7 +11,8 @@ from mr_private import default_store, load_store
 
 def running_processes(script, directory):
     quote = lambda value: "'" + str(value).replace("'", "''") + "'"
-    code = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | "
+    code = ("$ErrorActionPreference='Stop'; "
+            "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | "
             "Where-Object { $_.CommandLine -and $_.CommandLine -notmatch '\\s-c\\s' -and $_.CommandLine.Contains(" + quote(script) +
             ") -and $_.CommandLine.Contains(" + quote(directory) + ") } | "
             "Select-Object -ExpandProperty ProcessId")
