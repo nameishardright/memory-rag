@@ -126,6 +126,47 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(self.leftovers(), [])
 
 
+class OnceTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.source = self.root / 'source'; self.source.mkdir()
+        self.output = self.root / 'private'; self.output.mkdir()
+        self.store = self.output / 'corpus.enc'
+        self.sidecars = [self.store, self.store.with_suffix('.status.json'), self.store.with_name('coverage-review.enc')]
+
+    def run_once(self, passed):
+        seen = []
+
+        def verify(store, password):
+            seen.append(Path(store).name)
+            return {'passed': passed, 'snapshot_updated_at': load_store(store, password)['updated_at']}
+
+        with patch('mr_private_maintenance.sys.stdin', io.StringIO(PASSWORD + '\n')), \
+             patch('mr_private_maintenance.read_journal', return_value=iter([{}])), \
+             patch('mr_private_maintenance.stop_legacy_watcher'), \
+             patch('mr_private_maintenance.source_fingerprint', return_value='v1'), \
+             patch('mr_private_maintenance.run_script'), \
+             patch('mr_private_onenote.harvest', return_value={'state': 'no_linked_notebooks'}), \
+             patch('mr_private_maintenance.verify_live', side_effect=verify):
+            code = maintenance_main(['--source', str(self.source), '--store', str(self.store),
+                                     '--stdin-password', '--once', '--worker'])
+        return code, seen
+
+    def test_one_shot_run_keeps_the_live_store_until_the_new_generation_is_verified(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.assertEqual(self.run_once(True), (0, ['corpus.enc']))
+        accepted = [path.read_bytes() for path in self.sidecars]
+
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02')
+        self.assertEqual(self.run_once(False), (2, ['corpus.candidate.enc']))
+        self.assertEqual([path.read_bytes() for path in self.sidecars], accepted)
+        self.assertEqual(sorted(p.name for p in self.output.iterdir() if 'candidate' in p.name), [])
+        self.assertFalse(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
+
+        self.assertEqual(self.run_once(True), (0, ['corpus.candidate.enc']))
+        self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
+
+
 class LoopTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -217,6 +258,13 @@ class ManifestTests(unittest.TestCase):
             self.assertFalse(deployment_complete(app))
             manifest.write_text('{truncated', encoding='utf-8')
             self.assertFalse(deployment_complete(app))
+            (app / 'scripts' / 'worker.py').write_text('worker', encoding='utf-8')
+            manifest.write_text(json.dumps({'sha256': {'mr_private.py': digest('new'), 'scripts/worker.py': digest('worker')},
+                                            'vendored': {'bundled': {'version': '1', 'files': {'bundled/main.py': digest('bundled')}}}}))
+            self.assertFalse(deployment_complete(app))
+            (app / 'bundled').mkdir()
+            (app / 'bundled' / 'main.py').write_text('bundled', encoding='utf-8')
+            self.assertTrue(deployment_complete(app))
 
 
 if __name__ == '__main__':

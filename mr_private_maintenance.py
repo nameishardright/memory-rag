@@ -74,7 +74,10 @@ def deployment_complete(app=None):
     if not manifest.is_file():
         return True
     try:
-        expected = json.loads(manifest.read_text(encoding='utf-8'))['sha256']
+        listed = json.loads(manifest.read_text(encoding='utf-8'))
+        expected = dict(listed['sha256'])
+        for package in listed.get('vendored', {}).values():
+            expected.update(package['files'])
         return all(hashlib.sha256((app / name).read_bytes()).hexdigest() == digest
                    for name, digest in expected.items())
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -354,7 +357,7 @@ def main(argv=None):
         stop_legacy_watcher(args.store)
         source_marker = args.source / 'stop.request'
         if source_marker.exists(): source_marker.unlink()
-        if args.once:
+        if args.once and not args.store.is_file():
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
             update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
