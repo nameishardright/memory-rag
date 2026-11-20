@@ -7,6 +7,7 @@ import argparse
 from collections import Counter, defaultdict
 import datetime as dt
 import getpass
+import glob
 import hashlib
 import importlib.util
 import json
@@ -305,7 +306,32 @@ def prune_generated_partitions(store, password, protected, max_age=86400):
     return removed
 
 
-def import_journals(source, store, password, partitioned=False, policy=None):
+def candidate_files(store):
+    store = Path(store)
+    root = store.with_name(store.stem + '.candidate' + store.suffix)
+    return [(root.with_suffix('.status.json'), store.with_suffix('.status.json')),
+            (store.with_name('coverage-review.candidate.enc'), store.with_name('coverage-review.enc')),
+            (root, store)]
+
+
+def _candidate_caches(store):
+    store = Path(store)
+    prefix = store.stem + '.candidate.'
+    return [(path, store.with_name(store.stem + '.' + path.name[len(prefix):]))
+            for path in store.parent.glob(glob.escape(prefix) + '*' + store.suffix)]
+
+
+def promote_candidate(store):
+    for candidate, final in _candidate_caches(store) + candidate_files(store):
+        os.replace(candidate, final)
+
+
+def discard_candidate(store):
+    for candidate, _final in _candidate_caches(store) + candidate_files(store):
+        candidate.unlink(missing_ok=True)
+
+
+def import_journals(source, store, password, partitioned=False, policy=None, staged=False):
     source, store = Path(source).resolve(), Path(store).resolve()
     repo = Path(__file__).resolve().parent
     if store.is_relative_to(repo):
@@ -314,10 +340,12 @@ def import_journals(source, store, password, partitioned=False, policy=None):
     if not signature:
         raise ValueError("No encrypted source journals found")
     policy = policy or load_policy()
-    previous_partitions = {}
+    previous_partitions, previous_root = {}, {}
     if partitioned and store.is_file():
         previous_payload = load_store(store, password)
         previous_partitions = previous_payload.get('shards', {})
+        previous_root = {key: previous_payload.get(key) for key in
+                         ('content_sha256', 'coverage', 'updated_at', 'generation', 'tokenizer')}
         del previous_payload
     latest, current, inventory, narrative, external_inventories = {}, {}, None, None, {}
     archive_inventories = {}
@@ -506,12 +534,19 @@ def import_journals(source, store, password, partitioned=False, policy=None):
                "source_signature": signature,
                "coverage": coverage, "mode": "bm25", "tokenizer": PRIVATE_TOKENIZER}
     )
+    if (partitioned and previous_root.get('content_sha256') == payload.get('content_sha256')
+            and previous_partitions == partitions and previous_root.get('coverage') == coverage
+            and previous_root.get('tokenizer') == PRIVATE_TOKENIZER):
+        payload.update(updated_at=previous_root['updated_at'], generation=previous_root['generation'], unchanged=True)
+        return payload
+    (status_path, _), (review_path, _), (root, _) = (candidate_files(store) if staged else
+                                                    [(p, p) for _c, p in candidate_files(store)])
     # Publish the root last: readers either see the previous generation or a
     # complete new generation; never a mixture of sidecar partitions.
-    save_store(store, password, payload)
+    save_store(root, password, payload)
     status = {k: payload[k] for k in ("version", "updated_at", "coverage", "mode", "tokenizer")}
-    atomic_write(store.with_suffix(".status.json"), json.dumps(status, indent=2).encode("utf-8"))
-    save_store(store.with_name('coverage-review.enc'), password,
+    atomic_write(status_path, json.dumps(status, indent=2).encode("utf-8"))
+    save_store(review_path, password,
                {'version': 1, 'updated_at': payload['updated_at'], 'coverage': coverage,
                 'gaps': gap_rows,
                 'not_processed': sorted(eligible - set(latest))})
