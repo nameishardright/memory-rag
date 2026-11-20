@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from mr_index import BM25
-from mr_private import default_store, index_cache_path, load_private_rag, load_store
+from mr_private import default_store, index_cache_path, load_private_rag, load_store, review_path
 from mr_private_facts import CARD_INTENT, compact_search, extract_cards
 
 
@@ -212,7 +212,7 @@ class PrivateMemoryApp:
             self.status.set('请先解锁资料。')
             return
         password = self.password
-        path = self.store.parent / 'coverage-review.enc'
+        path = review_path(self.store)
         if not path.is_file():
             self.status.set('收录核对清单将在下一次索引更新后生成。')
             return

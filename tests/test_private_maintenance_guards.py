@@ -1,11 +1,15 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
+import re
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
+import mr_private
 import mr_private_maintenance
 from mr_private import append_journal, import_journals, load_private_rag, load_store
 from mr_private_maintenance import cycle, deployment_complete, main as maintenance_main
@@ -15,11 +19,11 @@ FILES = [{'path': 'family.txt', 'size': 20, 'mtime_ns': 1},
          {'path': '06_代码项目/example/README.md', 'size': 20, 'mtime_ns': 1}]
 
 
-def journal(source, family_text, stamp):
+def journal(source, family_text, stamp, project_text='Synthetic architecture design'):
     append_journal(source / 'extraction.enc', PASSWORD, [
         {'record_type': 'inventory', 'time': stamp, 'files': FILES},
         {**FILES[0], 'record_type': 'file', 'read_ok': True, 'text': family_text, 'method': 'text'},
-        {**FILES[1], 'record_type': 'file', 'read_ok': True, 'text': 'Synthetic architecture design', 'method': 'text'}])
+        {**FILES[1], 'record_type': 'file', 'read_ok': True, 'text': project_text, 'method': 'text'}])
 
 
 class Clock:
@@ -76,11 +80,129 @@ class PublishTests(unittest.TestCase):
             try:
                 cycle(self.source, self.store, PASSWORD, self.run_dir)
                 return seen, None
-            except RuntimeError as error:
+            except Exception as error:
                 return seen, error
 
     def leftovers(self):
         return sorted(p.name for p in self.store.parent.iterdir() if 'candidate' in p.name)
+
+    def partitions(self):
+        return sorted(p.name for p in self.store.parent.iterdir() if re.fullmatch(r'corpus\.[0-9a-f]{16}\.\w+\.enc', p.name))
+
+    def root_stamp(self):
+        return load_store(self.store, PASSWORD)['updated_at']
+
+    def status_stamp(self):
+        return json.loads(self.store.with_suffix('.status.json').read_text(encoding='utf-8'))['updated_at']
+
+    def blocked_switch(self, final):
+        real = os.replace
+
+        def replace(origin, target):
+            if Path(target) == final and 'candidate' in Path(origin).name:
+                raise PermissionError('synthetic')
+            return real(origin, target)
+
+        return patch('mr_private.os.replace', side_effect=replace)
+
+    def test_rejected_candidate_takes_its_new_partitions_with_it(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.run_cycle(True)
+        published = self.partitions()
+        self.assertEqual(len(published), 1)
+        journal(self.source, 'Synthetic family passport', '2026-01-02', 'Synthetic architecture design, second revision')
+        seen, error = self.run_cycle(False)
+        self.assertEqual(seen, ['corpus.candidate.enc'])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(self.partitions(), published)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_failed_switch_leaves_the_previous_generation_whole(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.run_cycle(True)
+        accepted, published = self.snapshot(), self.partitions()
+        verified = (self.store.parent / 'verification.json').read_bytes()
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02', 'Synthetic architecture design, second revision')
+        with self.blocked_switch(self.store), patch('mr_private.REPLACE_WAIT', 0, create=True):
+            seen, error = self.run_cycle(True)
+        self.assertEqual(seen, ['corpus.candidate.enc'])
+        self.assertIsInstance(error, PermissionError)
+        self.assertEqual(self.snapshot(), accepted)
+        self.assertEqual((self.store.parent / 'verification.json').read_bytes(), verified)
+        self.assertEqual(self.partitions(), published)
+        self.assertEqual(self.leftovers(), [])
+
+        self.assertEqual(self.run_cycle(True), (['corpus.candidate.enc'], None))
+        self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
+        self.assertEqual(self.status_stamp(), self.root_stamp())
+
+    def test_a_stale_sidecar_fails_the_run_and_is_repaired_on_the_next_one(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.run_cycle(True)
+        journal(self.source, 'Synthetic updated family tax passport', '2026-01-02')
+        with self.blocked_switch(self.store.with_suffix('.status.json')), patch('mr_private.REPLACE_WAIT', 0, create=True):
+            seen, error = self.run_cycle(True)
+        self.assertEqual(seen, ['corpus.candidate.enc'])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
+        report = json.loads((self.store.parent / 'verification.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['snapshot_updated_at'], self.root_stamp())
+        self.assertNotEqual(self.status_stamp(), self.root_stamp())
+
+        self.assertEqual(self.run_cycle(True), (['corpus.candidate.enc'], None))
+        self.assertEqual(self.status_stamp(), self.root_stamp())
+        self.assertEqual(self.leftovers(), [])
+        self.assertEqual(self.run_cycle(False), ([], None))
+
+    def test_verification_is_not_skipped_when_the_accepted_report_is_for_another_root(self):
+        journal(self.source, 'Synthetic family passport', '2026-01-01')
+        self.assertEqual(self.run_cycle(True), (['corpus.enc'], None))
+        self.assertEqual(self.run_cycle(False), ([], None))
+        status_path, report_path = self.store.with_suffix('.status.json'), self.store.parent / 'verification.json'
+        for stamp in ('2020-01-01T00:00:00+00:00', None):
+            status = json.loads(status_path.read_text(encoding='utf-8'))
+            status['updated_at'] = stamp
+            status_path.write_text(json.dumps(status), encoding='utf-8')
+            report_path.write_text(json.dumps({'passed': True, 'snapshot_updated_at': stamp}), encoding='utf-8')
+            seen, error = self.run_cycle(True)
+            self.assertIsNone(error)
+            self.assertEqual(len(seen), 1, stamp)
+            self.assertEqual(self.status_stamp(), self.root_stamp())
+            report = json.loads(report_path.read_text(encoding='utf-8'))
+            self.assertEqual(report['snapshot_updated_at'], self.root_stamp())
+
+    def test_a_different_gap_list_or_a_moved_source_is_a_new_generation(self):
+        def with_gap(source, reason, stamp):
+            files = [FILES[0], {'path': 'scan.pdf', 'size': 9, 'mtime_ns': 1}]
+            append_journal(source / 'extraction.enc', PASSWORD, [
+                {'record_type': 'inventory', 'time': stamp, 'files': files},
+                {**files[0], 'record_type': 'file', 'read_ok': True, 'text': 'Synthetic family passport', 'method': 'text'},
+                {**files[1], 'record_type': 'file', 'read_ok': False, 'text': '', 'method': 'pdf_text', 'warnings': [reason]}])
+
+        def listed():
+            review = load_store(self.store.with_name('coverage-review.enc'), PASSWORD)
+            return [(row['path'], row['warnings']) for row in review['gaps']]
+
+        with_gap(self.source, 'first reason', '2026-01-01')
+        first = import_journals(self.source, self.store, PASSWORD, partitioned=True)
+        with_gap(self.source, 'second reason', '2026-01-02')
+        second = import_journals(self.source, self.store, PASSWORD, partitioned=True)
+        self.assertEqual(second['coverage'], first['coverage'])
+        self.assertNotIn('unchanged', second)
+        self.assertEqual(listed(), [('scan.pdf', ['second reason'])])
+        self.assertTrue(import_journals(self.source, self.store, PASSWORD, partitioned=True)['unchanged'])
+
+        moved = self.root / 'moved'
+        shutil.copytree(self.source, moved)
+        third = import_journals(moved, self.store, PASSWORD, partitioned=True)
+        self.assertNotIn('unchanged', third)
+        self.assertEqual(load_store(self.store, PASSWORD)['source'], str(moved.resolve()))
+
+    def test_a_candidate_root_is_checked_against_its_own_review(self):
+        self.assertEqual(mr_private.review_path(Path('private/corpus.enc')).name, 'coverage-review.enc')
+        self.assertEqual(mr_private.review_path(Path('private/corpus.candidate.enc')).name, 'coverage-review.candidate.enc')
+        pairs = [(candidate.name, final.name) for candidate, final in mr_private.candidate_files(Path('private/corpus.enc'))]
+        self.assertEqual(pairs[1], ('coverage-review.candidate.enc', 'coverage-review.enc'))
 
     def test_new_generation_goes_live_only_after_it_passes_verification(self):
         journal(self.source, 'Synthetic family passport', '2026-01-01')
@@ -167,6 +289,23 @@ class OnceTests(unittest.TestCase):
         self.assertTrue(load_private_rag(self.store, PASSWORD).search('tax')['hits'])
 
 
+class LockTests(unittest.TestCase):
+    def test_only_one_cycle_runs_for_a_source_at_a_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            store = source / 'private' / 'corpus.enc'
+            with mr_private_maintenance.single_writer(source):
+                with self.assertRaises(RuntimeError):
+                    with mr_private_maintenance.single_writer(source):
+                        pass
+                with patch('mr_private_maintenance.run_script') as collect:
+                    with self.assertRaises(RuntimeError):
+                        cycle(source, store, PASSWORD, source)
+                    collect.assert_not_called()
+            with mr_private_maintenance.single_writer(source):
+                pass
+
+
 class LoopTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -236,6 +375,19 @@ class LoopTests(unittest.TestCase):
                                       implementation_signature=lambda: next(signatures),
                                       deployment_complete=lambda: False)
             child.assert_not_called()
+        self.assertEqual(run_cycle.call_count, 0)
+        self.assertEqual(self.state('watcher.status.json')['state'], 'waiting_for_deployment')
+
+
+    def test_unreadable_code_files_wait_instead_of_ending_the_loop(self):
+        answers = iter(['same'])
+
+        def signature():
+            for answer in answers:
+                return answer
+            raise PermissionError('synthetic')
+
+        run_cycle = self.run_loop(120, lambda *_args: {'coverage': {'content_gaps': {}}}, implementation_signature=signature)
         self.assertEqual(run_cycle.call_count, 0)
         self.assertEqual(self.state('watcher.status.json')['state'], 'waiting_for_deployment')
 

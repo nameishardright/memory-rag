@@ -1,5 +1,6 @@
 """Collect, publish and verify the private corpus without archive packaging gates."""
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import importlib
@@ -82,6 +83,25 @@ def deployment_complete(app=None):
                    for name, digest in expected.items())
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return False
+
+
+@contextlib.contextmanager
+def single_writer(source):
+    handle = open(Path(source) / 'maintenance.lock', 'a+b')
+    try:
+        handle.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise RuntimeError('Another maintenance cycle is running for this source') from None
+        yield
+    finally:
+        handle.close()
 
 
 def read_state(path):
@@ -269,6 +289,11 @@ def verify_native_ui(store, password):
 
 
 def cycle(source, store, password, run_dir):
+    with single_writer(source):
+        return _locked_cycle(source, store, password, run_dir)
+
+
+def _locked_cycle(source, store, password, run_dir):
     status = run_dir / 'run.status.json'
     job_status = source / 'job-status.json'
     for path in (status, job_status): update_status(path, 'collecting', phase='source_collection')
@@ -284,28 +309,31 @@ def cycle(source, store, password, run_dir):
     atomic_write(store.parent / 'onenote.status.json', json.dumps({'updated_at': now(), **notebook}, indent=2).encode('utf-8'))
     for path in (status, job_status): update_status(path, 'indexing', phase='publish_partitions', notebook=notebook)
     staged = store.is_file()
+    if staged: discard_candidate(store)
     payload = import_journals(source, store, password, partitioned=True, staged=staged)
     coverage, unchanged = payload['coverage'], bool(payload.get('unchanged'))
+    snapshot, created = payload.get('updated_at'), payload.get('created_partitions', ())
     del payload
     staged = staged and not unchanged
     accepted = read_state(store.parent / 'verification.json')
-    if not (unchanged and accepted.get('passed') and accepted.get('snapshot_updated_at')
-            == read_state(store.with_suffix('.status.json')).get('updated_at')):
+    if not (unchanged and accepted.get('passed') and snapshot and accepted.get('snapshot_updated_at') == snapshot):
         update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
+        promoted, stale = False, []
         try:
             verification = verify_live(candidate_files(store)[-1][0] if staged else store, password)
-        except Exception:
-            if staged: discard_candidate(store)
-            raise
-        report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
-        atomic_write(run_dir / 'live-verification.json', report)
+            report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
+            atomic_write(run_dir / 'live-verification.json', report)
+            if staged and verification['passed']:
+                stale = promote_candidate(store)
+                promoted = True
+        finally:
+            if staged and not promoted: discard_candidate(store, created)
         if staged and not verification['passed']:
-            discard_candidate(store)
             atomic_write(store.parent / 'verification-rejected.json', report)
             raise RuntimeError('Live private retrieval verification failed')
-        if staged: promote_candidate(store)
         atomic_write(store.parent / 'verification.json', report)
         if not verification['passed']: raise RuntimeError('Live private retrieval verification failed')
+        if stale: raise RuntimeError('Published generation is live but these files were not replaced: ' + ', '.join(stale))
     summary = {'coverage': coverage, 'verification_passed': True, 'notebook': notebook,
                'archive_packaging': 'Existing encrypted archive retained; archive packing is independent of RAG collection.'}
     update_status(status, 'complete_with_content_gaps' if coverage['content_gaps'] or notebook.get('state') not in
@@ -361,12 +389,17 @@ def main(argv=None):
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
             update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
-            payload = import_journals(args.source, args.store, password, partitioned=True)
+            with single_writer(args.source):
+                payload = import_journals(args.source, args.store, password, partitioned=True)
             del payload
         while not source_marker.exists():
             if (args.store.parent / 'stop.request').exists(): break
-            if not args.once and implementation_signature() != loaded_implementation:
-                if not deployment_complete():
+            try:
+                running_implementation = implementation_signature()
+            except OSError:
+                running_implementation = None
+            if not args.once and running_implementation != loaded_implementation:
+                if running_implementation is None or not deployment_complete():
                     update_status(args.store.parent / 'watcher.status.json', 'waiting_for_deployment', pid=os.getpid())
                     for _ in range(args.interval):
                         if source_marker.exists(): break
