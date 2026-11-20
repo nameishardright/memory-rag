@@ -11,7 +11,7 @@
 - 部署步骤和 11-05 相同：先放 `stop.request`，文件按 `mr_corpus.py`、其余文件、`mr_private*.py` 的顺序写入，`app-manifest.json` 最后写。随附的 markdown-it-py 和 mdurl 没有变化，不重写，只核对哈希。
 - 根目录的 `Finish-Update.cmd` 改为运行 `updates/20261120/finish_update.py`，步骤与 11-05 版相同，只是核对新的部署提交。11-05 版只认旧提交，留作历史。
 - 这次导入第一次走「候选 → 验收 → 切换」。验收不过时 `corpus.enc` 保持原样，Finish-Update 第 5 步报失败，汇总原因（只有计数）写进 `updates/20261120/finish-result.json`，根目录另有 `verification-rejected.json`。旧的检索照常可用。
-- 一轮维护期间收集器目录里有 `maintenance.lock`，同一份源同一时间只跑一轮。进程退出后锁自动释放，文件留着不用删。
+- 一轮维护期间持有一把本机锁（`%LOCALAPPDATA%\memory-rag\locks\` 下，按库路径取名），同一份库同一时间只跑一轮。进程退出后锁自动释放。
 - 后台进程发现 `mr_private*.py` 变了以后，要等 `app-manifest.json` 列的文件全部对上才重启。以后不要手工改 `app` 里的文件而不更新清单，否则后台停在 `waiting_for_deployment`。
 - 三件事分开看证据：部署本身看 `updates/20261120/deployment-results.json`；资料源电脑是否同步完，看 Finish-Update 第一步的哈希核对；导入和检索检查看 `updates/20261120/finish-result.json`。
 - 回退：按 `updates/20261120/backup-14c3a1e/backup-manifest.json` 放回原件，删除 `updates/20261120`。部署电脑上的本地备份保留。

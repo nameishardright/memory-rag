@@ -145,8 +145,8 @@ their original coverage date. The background process checks source metadata and
 notebook changes every five minutes and skips unchanged data. When a store already
 exists, a new generation is written as `corpus.candidate.enc`, verified, and only then
 replaces `corpus.enc`; a rejected candidate is deleted together with the partitions it
-wrote, and its report is kept in `verification-rejected.json`. One cycle at a time holds
-`maintenance.lock` in the collector folder. Coverage gaps are retried after one hour and then at
+wrote, and its report is kept in `verification-rejected.json`. One cycle at a time per store holds
+a local lock under `%LOCALAPPDATA%\memory-rag\locks`. Coverage gaps are retried after one hour and then at
 doubling intervals up to a day; a failed cycle is retried at doubling intervals up to
 six hours. Reboot requires a fresh local password entry.
 
