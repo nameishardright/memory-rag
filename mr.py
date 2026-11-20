@@ -58,7 +58,7 @@ def cmd_stats():
               "有" if mr_index.has_weights(sp) else "无(pull-model %s)" % name, sp["note"]))
     for name in mr_index.MODELS:
         sp = mr_index.model_spec(name)
-        emb = os.path.join(mr_index.CACHE, "emb-%s.npy" % sp["slug"])
+        emb = mr_index.cache_file(sp["slug"])
         print("  %s%-22s 权重:%s  缓存:%s  %s" % ("*" if name == cur["key"] else " ", name,
               "有" if mr_index.has_weights(sp) else "无(pull-model %s)" % name,
               "有" if os.path.exists(emb) else "无", sp["note"]))
@@ -266,7 +266,7 @@ def cmd_pull_model(name):
     if rr:
         print("重排权重 %s;用法:MR_RERANK=%s 或 --rerank %s" % ("就绪" if ok else "缺失", sp["key"], sp["key"]))
     else:
-        print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npy)" % ("就绪" if ok else "缺失", sp["slug"]))
+        print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npz)" % ("就绪" if ok else "缺失", sp["slug"]))
     return ok
 
 
