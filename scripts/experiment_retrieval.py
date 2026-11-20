@@ -41,7 +41,7 @@ def main():
                       MR_MODELS_DIR=str(args.models), MR_CACHE_DIR=str(args.cache),
                       MR_CORPUS_POLICY=str(args.frozen / "corpus-policy.json"), MR_CHUNK_STRATEGY=args.chunker,
                       HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", TOKENIZERS_PARALLELISM="false")
-    for pattern in ("emb-*.npy", "emb_meta-*.json"):
+    for pattern in ("emb-*.npz", "emb-*.npy", "emb_meta-*.json"):
         for path in args.models.glob(pattern):
             if not (args.cache / path.name).exists():
                 shutil.copy2(path, args.cache / path.name)

@@ -86,10 +86,27 @@ MCP:已注册 user 级 `rh-memory`(工具 `memory_search`/`memory_get`),新 CC �
 **embedding 模型一键切换(2026-09-08)**:预设表在 `mr_index.MODELS`:`bge-small-zh-v1.5`(默认,24M,512 token,92MB)/ `bge-m3`(568M,8192 token,2.27GB,仓里只有 pytorch_model.bin)/ `Qwen3-Embedding-0.6B`(0.6B,32k token,1.19GB);短名 small / m3 / qwen3 也认,任意 HF id 或本地权重目录也能传(前缀用 `MR_EMBED_PREFIX` 给)。
 - 三个入口:进程默认 `MR_EMBED_MODEL=bge-m3`(MCP 用这个,要重启会话)/ 单次查询 `memory_search(model="bge-m3")` / CLI `--model bge-m3`(search / eval / ranks 都有)。`py -3.12 mr.py stats` 列出每个预设有没有权重、有没有缓存。
 - 🔴 每个预设**自带 query 前缀**:bge-zh v1.5 要那句中文指令,bge-m3 不要,Qwen3 要 `Instruct: …\nQuery: `——换模型不换前缀会无声掉分,金标只会说"变差了"。
-- 缓存按模型分文件 `.cache/emb-<模型>.npy` + `emb_meta-<模型>.json`(老的 emb.npy 首次自动改名迁移,不重算;⚠️ 改名要在 `with open()` 外面,Windows 上文件开着 os.replace 报 PermissionError,吞掉就成了静默全量重算),切回来零成本;每个模型的向量层在进程里各自懒建,内存按装了几个算(bge-m3 fp32 约 2.3GB)。
+- 缓存按模型一个文件 `.cache/emb-<模型>.npz`(2026-11-20 起键和向量一起发布,见文末;之前是 `emb-<模型>.npy` + `emb_meta-<模型>.json` 两个文件,首次抽样核对后导入;更早的 emb.npy 首次自动改名迁移,不重算;⚠️ 改名要在 `with open()` 外面,Windows 上文件开着 os.replace 报 PermissionError,吞掉就成了静默全量重算),切回来零成本;每个模型的向量层在进程里各自懒建,内存按装了几个算(bge-m3 fp32 约 2.3GB)。
 - 缓存键(v2):`mr_corpus.chunk_key` = md5(文件名+标题+正文),即真正被编码的文本;之前只哈希正文,改标题/文件名不触发重算(外部评审项②,当时暴露面 1 组)。`emb_meta` 带 `ver`,改 `_index_text`/分块规则时 `CACHE_VER`+1 整体作废,别新旧键混一个文件。文件级 RRF 的文档身份改成「源/文件名」(项④,跨源同名当时 0 个,潜伏)。两处改完主金标 18/18 .835、PDF 11/12 .694 逐字不变。
 - 拉权重:`py -3.12 mr.py pull-model bge-m3`(curl -C - 断点续传,走 HF_ENDPOINT=hf-mirror.com)。🔴 镜像对仓里不存在的文件回 15 字节 "Entry not found" 而不是 404,pull-model 会识别并删掉;别手工 curl 留下假权重。没本地权重**不会**偷偷去 HF 拉(内网拉不动/代理劫持),hybrid 退 bm25 并在 note 里说 pull-model;真要联网拉设 `MR_EMBED_ALLOW_DOWNLOAD=1`。
 - 数字(用户 GPU 对照,同一 3116 块,笔记 18 题 + PDF 12 题):笔记 hybrid small 18/18 .835 vs bge-m3 17/18 .822(一题之差,噪声级);PDF small 11/12 .694 vs bge-m3 12/12 .917;笔记查询中位延迟 49ms vs 199ms(GPU;CPU 上更慢)。**截尾的代价取决于块长和答案位置**:笔记按标题分段主题在段首,截掉的是尾巴;PDF 一页一块,答案在页中任何位置。同一天先试过按 512 token 切小块:hybrid .835→.801(800 字)→.764(420 字),多向量 max-pool .798——**一段一块本身就是信号,切小反而掉**。
 - CPU 上的真实数(本机 16 线程,缓存命中,含查询编码):PDF 金标 hybrid bge-m3 12/12 .917 平均 256ms vs small 11/12 .694 35ms;笔记金标 bge-m3 17/18 .822 169ms vs small 18/18 .835 59ms(bge-m3 的 vec 单腿在笔记上 .804 > small .716,但 hybrid 不涨——BM25 已经把那部分捞回来了)。**建缓存别用 CPU**:bge-m3 3116 块 GPU 不到 3 分钟,CPU 小时级;Qwen3-Embedding-0.6B CPU 100 分钟没编完 1819 块,放弃。本机基础 env 是 CPU torch,另一会话装了隔离的 torch 2.11+cu128 在 `C:\Users\zihao\scratchpad\rag-model-compare-20260908-171900\cuda-runtime\`,`PYTHONPATH` 指过去就能 GPU 编码(`PYTHONPATH=<那个目录> MR_PDF=1 py -3.12 mr.py eval --golden golden/golden_pdf.json --model bge-m3`),缓存文件跟 env 无关,建完 MCP 进程照常用 CPU torch 查。
 - **heading_path 实验(HA ch8 笔记「对照 memory_rag」2①,p289;2026-09-08 晚,GPU 编码同一主金标)——负结果,别做**:索引文本里把当前标题换成完整路径(H1 > H2 > H3):hybrid 18/18 .835→.769、bm25 .789→.778、vec .716→.636;去掉 H1(文件名已在索引文本里)只拼 H2 起:hybrid .780、vec .669,仍全面掉。原因和「切小块反而掉」同源:笔记的文件名已经是主题,当前标题已经是本节,再把上级标题塞进每一块只是给全文件所有块加同一串词——BM25 里它们不再区分块、还把块拉长,向量里它们稀释本节语义。观澜 kb.js 带 heading_path 有收益是语料形状不同:案例卡的概念名只在 H1 里、文件名是拼音/编号。**同一个技巧在两个语料上一正一负,只能各量各的。**
 - 决策:笔记留 small,`source=pdf` 走 bge-m3——`MR_EMBED_MODEL_PDF=bge-m3`(没显式传 model 且 source=pdf 时生效)。MCP 注册:`claude mcp remove -s user rh-memory && claude mcp add -s user -e MR_PDF=1 -e MR_EMBED_MODEL_PDF=bge-m3 rh-memory -- py -3.12 <path>\mr_mcp_server.py`,之前先 `pull-model bge-m3` 并 `MR_PDF=1 py -3.12 mr.py eval --golden golden/golden_pdf.json --model bge-m3` 建一次缓存(CPU 上 1296 页要十几分钟,只算一次)。
+
+## 2026-11-20 审计修复(工作版)
+
+来源是 11-19 的代码审计(Codex 复核 13 条全属实)。数字都是本机实测:真实语料 24,834 块,`MR_PDF=1`,stock 按需装载。
+
+- **向量缓存改成一个文件**:`.cache/emb-<模型>.npz` 里键和向量在一起,写临时文件再 `os.replace`。以前键清单(JSON)和向量(NPY)分两次写、读时只核行数,两个会话进程同写时能把 A 的键配上 B 的向量,查询返回错的文件,而且会被原样写回。新文件不存在时读旧的那一对,抽样重新编码核对(最多 64 行,优先核末尾,超过 15 秒就停)后导入,核不过整份弃用重算;旧文件留着不删。没有新块时不再重写缓存;写之前发现别的进程发布过,先并进来。文件被占用换不进去时本次不写回,stderr 有一行 `[vec-cache]`。
+  - 迁移后全量核对:小模型 17,624 个当前块逐块重新编码,余弦最小 1.0000。
+  - 🔴 bge-m3 那份迁移时要在 CPU 上现编码几页做核对,第一次 `source=pdf` 查询会多等十几到几十秒;部署后先手动查一次 PDF 把它跑掉。
+  - 评测脚本(`verify_retrieval` / `verify_mcp` / `experiment_retrieval` / `eval_answers`)拷缓存时带上 `emb-*.npz`。
+- **热更只重读改过的文件**:`load_chunks(cache=)` 按文件版本(路径、mtime、大小、切块策略)留住脱敏和切块后的结果,PDF 页同理;用途标签每次重建现算,所以改 `corpus-policy.json` 不用重读文件。重建耗时:只装关键词腿 5.1–5.5 秒 → 0.64–0.75 秒,带向量层 6.4–10.4 秒 → 0.8–1.1 秒。新旧代码在真实语料上切出的 24,834 块逐块一致。直接调 `load_chunks()` 不带 cache 时和以前一样每次全读。
+- **热更不再漏掉读文件期间的改动**:`_rebuild` 先算指纹再读文件。以前读完才算,中间改过的文件会被登记成最新,表现是刚写的笔记搜不到,要等下一次别的文件变动才好。
+- **坏的 `rag_purpose`**:这一个文件不入库,搜索结果的 `note` 里点名,改对后下一次到点检查自动恢复。已在跑的进程重建失败(比如 `corpus-policy.json` 写错)时继续用上一份索引,`note` 里说明;冷启动仍然直接报错。评测脚本直接调 `load_chunks()` 时也仍然报错。
+- **`memory_get` 全文有上限**:`MR_GET_MAX_CHARS`(默认 20000,0 = 不限)。超出时只返回开头,带 `truncated` / `total_chars` / `headings`(最多 80 个标题),其余按 `heading` 读。`memory_check_answer` 内部仍读全文。
+- **脱敏放行路径和普通网址**:反引号里的盘符路径(`C:\…`、`D:/…`),以及不带 `?` `&` `=` `@`、也没有 24 位以上长串的 http(s) / ws(s) / ftp / file 网址,不再抹成 `C:<REDACTED>`。真实语料 493 处被这条规则抹掉的内容里放行 226 处(路径 170、网址 56),其余 267 处照旧。227 个块的指纹因此变化,向量自动重算。金标前后对照(笔记 23 题、阴性 12 题、段落 8 题、股票 12 题、PDF 12 题,含 cross-encoder 门):前 5 命中数和置信分布全部不变;一道本来排第 8 的题变成第 9(笔记 hybrid MRR .7856 → .7850),另有 5 道题前 5 名内部换了顺序或第 5 名换了一个非目标文件。
+- **查询日志**:`get` 记定位后的文件标识(work 源带目录,PDF 不带 `#p`),`mr.py log` 才能把「搜完又读了哪个命中」配上;`search` 的 `q` 写入前过一遍 `redact()`,`mr.py log` 打印旧记录时也过一遍。旧日志文件里已有的原文没有回头清。
+
+没改:stock 约 7 千块没有向量、第一次带向量的 stock 查询要现算(W4);BM25 每次重建仍重算全部词频(约 0.3 秒);向量缓存只增不减(当前约一半是过期行)。

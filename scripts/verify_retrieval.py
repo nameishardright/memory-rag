@@ -72,7 +72,7 @@ def main():
                       MR_MODELS_DIR=str(CODE / ".cache"), MR_CACHE_DIR=str(args.cache),
                       HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", TOKENIZERS_PARALLELISM="false")
     os.environ.pop("MR_EMBED_ALLOW_DOWNLOAD", None)
-    for pattern in ("emb-*.npy", "emb_meta-*.json"):
+    for pattern in ("emb-*.npz", "emb-*.npy", "emb_meta-*.json"):
         for original in (CODE / ".cache").glob(pattern):
             if not (args.cache / original.name).exists():
                 shutil.copy2(original, args.cache / original.name)

@@ -5,7 +5,10 @@
 import math
 import os
 import re
+import sys
 import threading
+import time
+import uuid
 
 import mr_corpus
 import mr_stock
@@ -251,10 +254,88 @@ class BM25:
 
 
 CACHE_VER = 2   # 改 _index_text / chunk_key / 分块规则时 +1:老缓存整体作废重算,而不是新旧键混在一个文件里越攒越大(v2 = 键含文件名+标题)
+LEGACY_SAMPLE = 64
+LEGACY_BATCH = 8
+LEGACY_BUDGET_SEC = 15
+LEGACY_MIN_COS = 0.98
+
+
+def cache_file(slug):
+    return os.path.join(CACHE, "emb-%s.npz" % slug)
+
+
+def _stamp(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+def _read_vectors(path, model_id):
+    import numpy as np
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            if str(data["model"]) != model_id or int(data["ver"]) != CACHE_VER:
+                return {}
+            keys, arr = data["md5s"].tolist(), data["emb"]
+    except Exception:
+        return {}
+    return {h: arr[i] for i, h in enumerate(keys)} if len(keys) == len(arr) else {}
+
+
+def _read_legacy(meta_p, emb_p, model_id):
+    import json
+    import numpy as np
+    for attempt in range(3):
+        if attempt:
+            time.sleep(0.5)
+        try:
+            with open(meta_p, encoding="utf-8") as f:
+                m = json.load(f)
+            arr = np.load(emb_p)
+        except FileNotFoundError:
+            return {}
+        except Exception:
+            continue
+        if m.get("model") != model_id or m.get("ver") != CACHE_VER:
+            return {}
+        if len(m.get("md5s", [])) == len(arr):
+            return {h: arr[i] for i, h in enumerate(m["md5s"])}
+    return {}
+
+
+def _publish_vectors(path, model_id, vectors):
+    import glob
+    import numpy as np
+    for stale in glob.glob(glob.escape(path) + ".*.tmp"):
+        try:
+            if time.time() - os.path.getmtime(stale) > 3600:
+                os.remove(stale)
+        except OSError:
+            pass
+    keys = list(vectors)
+    tmp = "%s.%d-%s.tmp" % (path, os.getpid(), uuid.uuid4().hex[:8])
+    try:
+        with open(tmp, "wb") as f:
+            np.savez(f, model=np.array(model_id), ver=np.array(CACHE_VER),
+                     md5s=np.array(keys, dtype=str), emb=np.stack([vectors[k] for k in keys]))
+        for attempt in range(8):
+            try:
+                os.replace(tmp, path)
+                return True
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+        return False
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 class VecIndex:
-    """embedding 按 chunk md5 缓存(.cache/emb-<模型>.npy):语料改一块只重算一块;缓存按模型分文件,切换模型不互相冲掉。"""
+    """embedding 按 chunk md5 缓存(.cache/emb-<模型>.npz):语料改一块只重算一块;缓存按模型分文件,切换模型不互相冲掉。"""
 
     def __init__(self, chunks, model=None, spec=None):
         self.spec = spec or model_spec()
@@ -272,22 +353,21 @@ class VecIndex:
                 self.spec["key"], self.spec["local"], self.spec["key"])
             return
         try:
-            import json
             self.np = np
             os.makedirs(CACHE, exist_ok=True)
-            meta_p = os.path.join(CACHE, "emb_meta-%s.json" % self.spec["slug"])
-            emb_p = os.path.join(CACHE, "emb-%s.npy" % self.spec["slug"])
-            self._migrate_legacy(meta_p, emb_p)
-            old = {}
-            if os.path.exists(meta_p) and os.path.exists(emb_p):
-                try:
-                    with open(meta_p, encoding="utf-8") as f:
-                        m = json.load(f)
-                    arr = np.load(emb_p)
-                    if m.get("model") == self.spec["id"] and m.get("ver") == CACHE_VER and len(m.get("md5s", [])) == len(arr):
-                        old = {h: arr[i] for i, h in enumerate(m["md5s"])}
-                except Exception:
-                    old = {}
+            path = cache_file(self.spec["slug"])
+            stamp = _stamp(path)
+            old = _read_vectors(path, self.spec["id"]) if stamp else {}
+            migrated = False
+            if stamp is None:
+                meta_p = os.path.join(CACHE, "emb_meta-%s.json" % self.spec["slug"])
+                emb_p = os.path.join(CACHE, "emb-%s.npy" % self.spec["slug"])
+                self._migrate_legacy(meta_p, emb_p)
+                legacy = _read_legacy(meta_p, emb_p, self.spec["id"])
+                if legacy and self._legacy_agrees(legacy, chunks):
+                    old, migrated = legacy, True
+                elif legacy:
+                    print("[vec-cache] %s: 旧缓存没通过抽样核对,弃用并重算" % self.spec["key"], file=sys.stderr)
             todo = [c for c in chunks if c["md5"] not in old]
             if todo:
                 vecs = self._get_model().encode(
@@ -297,13 +377,35 @@ class VecIndex:
                     old[c["md5"]] = v
             self.emb = np.stack([old[c["md5"]] for c in chunks])
             # 缓存存「见过的全部」而不是「当前这批」:MR_PDF 开关来回切、或某源临时缺目录时,不用把 1100 页重算一遍
-            keys = list(old.keys())
-            with open(meta_p, "w", encoding="utf-8") as f:
-                json.dump({"model": self.spec["id"], "ver": CACHE_VER, "md5s": keys}, f)
-            np.save(emb_p, np.stack([old[k] for k in keys]))
+            if todo or migrated:
+                if _stamp(path) != stamp:
+                    for h, row in _read_vectors(path, self.spec["id"]).items():
+                        old.setdefault(h, row)
+                if not _publish_vectors(path, self.spec["id"], old):
+                    print("[vec-cache] %s: 缓存文件被占用,本次没写回" % self.spec["key"], file=sys.stderr)
             self.available = True
         except Exception as e:                      # 模型加载失败/磁盘问题等,都降级不炸
             self.err = "%s: %s" % (type(e).__name__, e)
+
+    def _legacy_agrees(self, legacy, chunks):
+        order = {h: i for i, h in enumerate(legacy)}
+        present = sorted({c["md5"]: c for c in chunks if c["md5"] in order}.values(), key=lambda c: order[c["md5"]])
+        if not present:
+            return False
+        half = LEGACY_SAMPLE // 2
+        spread = present[::max(1, len(present) // half)][:half]
+        mixed = [c for pair in zip(reversed(present[-half:]), spread) for c in pair] + present[-half:] + spread
+        sample = list({c["md5"]: c for c in mixed}.values())
+        started = time.monotonic()
+        for i in range(0, len(sample), LEGACY_BATCH):
+            part = sample[i:i + LEGACY_BATCH]
+            fresh = self._get_model().encode([_index_text(c) for c in part], normalize_embeddings=True, show_progress_bar=False)
+            if not all(len(row) == len(legacy[c["md5"]]) and float(self.np.dot(row, legacy[c["md5"]])) >= LEGACY_MIN_COS
+                       for row, c in zip(fresh, part)):
+                return False
+            if time.monotonic() - started > LEGACY_BUDGET_SEC:
+                break
+        return True
 
     def _migrate_legacy(self, meta_p, emb_p):
         """老缓存文件名 emb.npy / emb_meta.json(单模型时代)→ 按模型分文件;只在 meta 里的模型对得上时改名,不重算。"""

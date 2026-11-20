@@ -126,17 +126,21 @@ def load_purposes():
     return result
 
 
+def frontmatter_purpose(text):
+    frontmatter = re.match(r"\A\ufeff?---\s*\n(.*?)\n---(?:\s*\n|\Z)", text, re.S)
+    label = frontmatter and re.search(r"^rag_purpose:\s*([\w-]+)\s*$", frontmatter[1], re.M)
+    return label[1] if label else None
+
+
+def labelled_purpose(source, file, label, purposes):
+    if label is not None and label not in PURPOSES:
+        raise ValueError("Unknown rag_purpose in %s" % file)
+    return purposes.get((source, file), label or "knowledge")
+
+
 def document_purpose(source, file, text, purposes):
     """A sidecar label overrides the optional top-level `rag_purpose` frontmatter key."""
-    purpose = "knowledge"
-    frontmatter = re.match(r"\A\ufeff?---\s*\n(.*?)\n---(?:\s*\n|\Z)", text, re.S)
-    if frontmatter:
-        label = re.search(r"^rag_purpose:\s*([\w-]+)\s*$", frontmatter[1], re.M)
-        if label:
-            purpose = label[1]
-            if purpose not in PURPOSES:
-                raise ValueError("Unknown rag_purpose in %s" % file)
-    return purposes.get((source, file), purpose)
+    return labelled_purpose(source, file, frontmatter_purpose(text), purposes)
 
 
 def chunk_purpose(source, file, heading, default, purposes):
@@ -216,24 +220,43 @@ def extract_pdf(path, progress=None):
     return pages
 
 
-def load_pdf_chunks():
+def _pdf_blocks(fn, path):
+    blocks = []
+    for i, text in enumerate(extract_pdf(path, progress=lambda a, b, _f=fn: print("[pdf] %s %d/%d" % (_f, a, b), file=sys.stderr))):
+        text = redact(text)
+        if len(text) < MIN_PAGE_CHARS:
+            continue
+        head = "p%d" % (i + 1)
+        for h, body in _hard_wrap(head, text, strategy=chunk_strategy("pdf")):
+            body = redact(body)  # a character boundary can cut a redaction placeholder
+            blocks.append((h, body, hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12], chunk_key(fn, h, body)))
+    return blocks
+
+
+def load_pdf_chunks(cache=None):
     chunks = []
     purposes = load_purposes()
+    live = set()
     for path in pdf_files():
         fn = os.path.basename(path)
-        for i, text in enumerate(extract_pdf(path, progress=lambda a, b, _f=fn: print("[pdf] %s %d/%d" % (_f, a, b), file=sys.stderr))):
-            text = redact(text)
-            if len(text) < MIN_PAGE_CHARS:
-                continue
-            head = "p%d" % (i + 1)
-            for h, body in _hard_wrap(head, text, strategy=chunk_strategy("pdf")):
-                body = redact(body)  # a character boundary can cut a redaction placeholder
-                chunks.append({
-                    "id": hashlib.md5(("pdf|%s|%s" % (fn, h)).encode()).hexdigest()[:12],
-                    "source": "pdf", "file": fn, "heading": h, "text": body,
-                    "md5": chunk_key(fn, h, body),
-                    "purpose": chunk_purpose("pdf", fn, h, purposes.get(("pdf", fn), "knowledge"), purposes),
-                })
+        st = os.stat(path)
+        stamp = (path, int(st.st_mtime), st.st_size, chunk_strategy("pdf"), MAX_CHUNK, OVERLAP)
+        entry = cache.get(("pdf", fn)) if cache is not None else None
+        if entry is None or entry[0] != stamp:
+            entry = (stamp, _pdf_blocks(fn, path))
+            if cache is not None:
+                cache[("pdf", fn)] = entry
+        live.add(("pdf", fn))
+        for h, body, chunk_id, md5 in entry[1]:
+            chunks.append({
+                "id": chunk_id,
+                "source": "pdf", "file": fn, "heading": h, "text": body,
+                "md5": md5,
+                "purpose": chunk_purpose("pdf", fn, h, purposes.get(("pdf", fn), "knowledge"), purposes),
+            })
+    if cache is not None:
+        for key in [k for k in cache if k[0] == "pdf" and k not in live]:
+            del cache[key]
     return chunks
 
 
@@ -276,12 +299,25 @@ RE_AUTH_HEADER = re.compile(r"(?i)(\b(?:Authorization|Proxy-Authorization)[\"']?
 RE_BARE_KEY = re.compile(r"\b(sk-|AKID|AKIA|LTAI)[A-Za-z0-9_-]{12,}")
 
 
+RE_DRIVE = re.compile(r"[A-Za-z]")
+RE_URL_SCHEME = re.compile(r"(?i)https?|wss?|ftp|file")
+RE_URL_ACCESS = re.compile(r"[?&=@]|[A-Za-z0-9_-]{24,}")
+
+
+def _plain_location(key, value):
+    if RE_DRIVE.fullmatch(key):
+        return value[0] in "\\/"
+    return bool(RE_URL_SCHEME.fullmatch(key)) and value.startswith("//") and not RE_URL_ACCESS.search(value)
+
+
 def redact(text):
     text = RE_BARE_KEY.sub(lambda m: m[1] + '<REDACTED>', text)
     text = RE_URL_LOGIN.sub(lambda m: m[1] + '<REDACTED>' + m[3], text)
     text = RE_AUTH_HEADER.sub(lambda m: m[1] + '<REDACTED>', text)
     def inline(match):
         value = match[2]
+        if _plain_location(match[1], value):
+            return match[0]
         nearby = text[max(0, match.start()-60):match.start()]
         credential_context = re.search(r"(?i)账号|账户|凭据|账密|认证|password|credential|auth", nearby)
         mixed_value = re.search(r'[A-Za-z]', value) and re.search(r'[0-9!$%^&*+=]', value)
@@ -411,10 +447,27 @@ def _hard_wrap(head, body, strategy=None):
     return out
 
 
-def load_chunks(skip=frozenset()):
+def _file_blocks(src, fn, path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    # Credential syntax is a content property, not a source property.
+    text = redact(text)
+    blocks = []
+    for head, body in (hb for h in _split_heading(text)
+                       for hb in _hard_wrap(*h, strategy=chunk_strategy(src["key"]))):
+        body = redact(body)
+        blocks.append((head, body,
+                       hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
+                       chunk_key(fn, head, body),
+                       hashlib.md5(("%s\n%s" % (head, body)).encode()).hexdigest()))
+    return frontmatter_purpose(text), blocks
+
+
+def load_chunks(skip=frozenset(), cache=None, problems=None):
     """skip = 不装的源(按需源还没被查过);块的先后仍按 SOURCES 顺序,装上后与全量装载完全相同。"""
     chunks = []
     purposes = load_purposes()
+    live = set()
     for src in SOURCES:
         if src["key"] in skip:
             continue
@@ -428,32 +481,41 @@ def load_chunks(skip=frozenset()):
             # 工作目录里同一仓拷了 9 份(supplier-health*):同一段落只留最新文件那份,否则前 5 名全是复本
             files.sort(key=lambda f: -f[2].st_mtime_ns)
             seen = set()
-        for fn, path, _st in files:
+        for fn, path, st in files:
+            stamp = (path, st.st_mtime_ns, st.st_size, chunk_strategy(src["key"]), MAX_CHUNK, OVERLAP)
+            entry = cache.get((src["key"], fn)) if cache is not None else None
+            if entry is None or entry[0] != stamp:
+                try:
+                    entry = (stamp,) + _file_blocks(src, fn, path)
+                except OSError as e:
+                    print("[corpus] 读失败 %s: %s" % (fn, e), file=sys.stderr)
+                    continue
+                if cache is not None:
+                    cache[(src["key"], fn)] = entry
+            live.add((src["key"], fn))
             try:
-                with open(path, encoding="utf-8", errors="replace") as f:
-                    text = f.read()
-            except OSError as e:
-                print("[corpus] 读失败 %s: %s" % (fn, e), file=sys.stderr)
+                purpose = labelled_purpose(src["key"], fn, entry[1], purposes)
+            except ValueError as error:
+                if problems is None:
+                    raise
+                problems.append({"source": src["key"], "file": fn, "error": str(error)})
                 continue
-            # Credential syntax is a content property, not a source property.
-            text = redact(text)
-            purpose = document_purpose(src["key"], fn, text, purposes)
-            for head, body in (hb for h in _split_heading(text)
-                               for hb in _hard_wrap(*h, strategy=chunk_strategy(src["key"]))):
-                body = redact(body)
+            for head, body, chunk_id, md5, dup in entry[2]:
                 if seen is not None:
-                    dup = hashlib.md5(("%s\n%s" % (head, body)).encode()).hexdigest()
                     if dup in seen:
                         continue
                     seen.add(dup)
                 chunks.append({
-                    "id": hashlib.md5(("%s|%s|%s" % (src["key"], fn, head)).encode()).hexdigest()[:12],
+                    "id": chunk_id,
                     "source": src["key"], "file": fn, "heading": head, "text": body,
-                    "md5": chunk_key(fn, head, body),
+                    "md5": md5,
                     "purpose": chunk_purpose(src["key"], fn, head, purpose, purposes),
                 })
+    if cache is not None:
+        for key in [k for k in cache if k[0] != "pdf" and k[0] not in skip and k not in live]:
+            del cache[key]
     if pdf_enabled():
-        chunks.extend(load_pdf_chunks())
+        chunks.extend(load_pdf_chunks(cache=cache))
     return chunks
 
 

@@ -12,8 +12,8 @@ import sys
 import time
 import traceback
 
-from mr_private import (atomic_write, import_journals, load_private_rag, load_store,
-                        now, read_journal, save_store)
+from mr_private import (atomic_write, candidate_files, discard_candidate, import_journals, load_private_rag,
+                        load_store, now, promote_candidate, read_journal, save_store)
 from mr_private_policy import classify, policy_signature, SCOPES
 
 
@@ -56,11 +56,40 @@ class MaintenanceStopped(Exception):
     pass
 
 
+RETRY_CAP_SECONDS = 6 * 3600
+GAP_RETRY_SECONDS = 3600
+GAP_RETRY_CAP_SECONDS = 24 * 3600
+
+
 def implementation_signature():
     digest = hashlib.sha256()
     for path in sorted(Path(__file__).parent.glob('mr_private*.py')):
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def deployment_complete(app=None):
+    app = Path(app or Path(__file__).parent)
+    manifest = app.parent / 'app-manifest.json'
+    if not manifest.is_file():
+        return True
+    try:
+        listed = json.loads(manifest.read_text(encoding='utf-8'))
+        expected = dict(listed['sha256'])
+        for package in listed.get('vendored', {}).values():
+            expected.update(package['files'])
+        return all(hashlib.sha256((app / name).read_bytes()).hexdigest() == digest
+                   for name, digest in expected.items())
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def read_state(path):
+    try:
+        value = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def update_status(path, state, **values):
@@ -254,14 +283,29 @@ def cycle(source, store, password, run_dir):
         notebook = {'state': 'unavailable', 'error_type': type(error).__name__}
     atomic_write(store.parent / 'onenote.status.json', json.dumps({'updated_at': now(), **notebook}, indent=2).encode('utf-8'))
     for path in (status, job_status): update_status(path, 'indexing', phase='publish_partitions', notebook=notebook)
-    payload = import_journals(source, store, password, partitioned=True)
-    coverage = payload['coverage']
+    staged = store.is_file()
+    payload = import_journals(source, store, password, partitioned=True, staged=staged)
+    coverage, unchanged = payload['coverage'], bool(payload.get('unchanged'))
     del payload
-    update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
-    verification = verify_live(store, password)
-    atomic_write(store.parent / 'verification.json', json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8'))
-    atomic_write(run_dir / 'live-verification.json', json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8'))
-    if not verification['passed']: raise RuntimeError('Live private retrieval verification failed')
+    staged = staged and not unchanged
+    accepted = read_state(store.parent / 'verification.json')
+    if not (unchanged and accepted.get('passed') and accepted.get('snapshot_updated_at')
+            == read_state(store.with_suffix('.status.json')).get('updated_at')):
+        update_status(status, 'verifying', phase='live_retrieval', notebook=notebook)
+        try:
+            verification = verify_live(candidate_files(store)[-1][0] if staged else store, password)
+        except Exception:
+            if staged: discard_candidate(store)
+            raise
+        report = json.dumps(verification, ensure_ascii=False, indent=2).encode('utf-8')
+        atomic_write(run_dir / 'live-verification.json', report)
+        if staged and not verification['passed']:
+            discard_candidate(store)
+            atomic_write(store.parent / 'verification-rejected.json', report)
+            raise RuntimeError('Live private retrieval verification failed')
+        if staged: promote_candidate(store)
+        atomic_write(store.parent / 'verification.json', report)
+        if not verification['passed']: raise RuntimeError('Live private retrieval verification failed')
     summary = {'coverage': coverage, 'verification_passed': True, 'notebook': notebook,
                'archive_packaging': 'Existing encrypted archive retained; archive packing is independent of RAG collection.'}
     update_status(status, 'complete_with_content_gaps' if coverage['content_gaps'] or notebook.get('state') not in
@@ -313,7 +357,7 @@ def main(argv=None):
         stop_legacy_watcher(args.store)
         source_marker = args.source / 'stop.request'
         if source_marker.exists(): source_marker.unlink()
-        if args.once:
+        if args.once and not args.store.is_file():
             # The root is published before a long first collection. Subsequent
             # background cycles do not repeat this extra import.
             update_status(run_dir / 'run.status.json', 'indexing', phase='filter_existing_evidence')
@@ -322,6 +366,12 @@ def main(argv=None):
         while not source_marker.exists():
             if (args.store.parent / 'stop.request').exists(): break
             if not args.once and implementation_signature() != loaded_implementation:
+                if not deployment_complete():
+                    update_status(args.store.parent / 'watcher.status.json', 'waiting_for_deployment', pid=os.getpid())
+                    for _ in range(args.interval):
+                        if source_marker.exists(): break
+                        time.sleep(1)
+                    continue
                 command = [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()), '--source', str(args.source),
                            '--store', str(args.store), '--run-dir', str(run_dir), '--stdin-password',
                            '--interval', str(args.interval)]
@@ -330,28 +380,47 @@ def main(argv=None):
                 process.stdin.write((password + '\n').encode('utf-8')); process.stdin.close()
                 update_status(args.store.parent / 'watcher.status.json', 'restarting', pid=process.pid)
                 return 0
-            fingerprint = source_fingerprint(args.source)
             checkpoint = args.store.parent / 'maintenance-checkpoint.json'
-            previous = json.loads(checkpoint.read_text(encoding='utf-8')) if checkpoint.is_file() else {}
-            refresh = (args.once or fingerprint != previous.get('source_fingerprint') or
-                       (previous.get('retryable_gaps', 0) and time.time() - previous.get('checked_at_epoch', 0) >= 3600))
+            failure_state = args.store.parent / 'maintenance-failure.json'
+            fingerprint, failed = None, read_state(failure_state)
             try:
-                update_status(args.store.parent / 'watcher.status.json', 'updating' if refresh else 'monitoring', pid=os.getpid())
+                fingerprint = source_fingerprint(args.source)
+                previous = read_state(checkpoint)
+                changed = fingerprint != previous.get('source_fingerprint')
+                gap_wait = min(GAP_RETRY_SECONDS * 2 ** int(previous.get('gap_retries', 0)), GAP_RETRY_CAP_SECONDS)
+                gap_due = (bool(previous.get('retryable_gaps', 0))
+                           and time.time() - previous.get('checked_at_epoch', 0) >= gap_wait)
+                backing_off = (failed.get('source_fingerprint') == fingerprint
+                               and time.time() < failed.get('retry_after_epoch', 0))
+                refresh = args.once or ((changed or gap_due) and not backing_off)
+                update_status(args.store.parent / 'watcher.status.json',
+                              'updating' if refresh else 'backing_off' if changed or gap_due else 'monitoring',
+                              pid=os.getpid())
                 if refresh:
                     summary = cycle(args.source, args.store, password, run_dir)
                     retryable = sum(summary['coverage']['content_gaps'].get(name, 0) for name in
                                     ('read_failed', 'extraction_failed', 'media_transcription_failed',
                                      'source_changed_since_extraction', 'archive_index_failed', 'archive_member_read_failed'))
                     retryable += summary.get('notebook', {}).get('failed_pages', 0)
+                    same_gaps = bool(retryable) and not changed and retryable == previous.get('retryable_gaps')
                     atomic_write(checkpoint, json.dumps({'source_fingerprint': fingerprint,
                                  'checked_at_epoch': time.time(), 'retryable_gaps': retryable,
+                                 'gap_retries': int(previous.get('gap_retries', 0)) + 1 if same_gaps else 0,
                                  'verified_at': now()}, indent=2).encode('utf-8'))
+                    if failure_state.exists(): failure_state.unlink()
             except MaintenanceStopped:
                 update_status(run_dir / 'run.status.json', 'stopped')
                 return 0
             except Exception as error:
-                update_status(run_dir / 'run.status.json', 'retrying', error_type=type(error).__name__)
-                update_status(args.source / 'job-status.json', 'retrying', error_type=type(error).__name__)
+                failures = int(failed.get('failures', 0)) + 1 if failed.get('source_fingerprint') == fingerprint else 1
+                retry_after = time.time() + min(args.interval * 2 ** failures, RETRY_CAP_SECONDS)
+                if not args.once:
+                    atomic_write(failure_state, json.dumps({'source_fingerprint': fingerprint, 'failures': failures,
+                                 'failed_at_epoch': time.time(), 'retry_after_epoch': retry_after,
+                                 'error_type': type(error).__name__}, indent=2).encode('utf-8'))
+                for path in (run_dir / 'run.status.json', args.source / 'job-status.json'):
+                    update_status(path, 'retrying', error_type=type(error).__name__, consecutive_failures=failures,
+                                  retry_after_epoch=retry_after)
                 if args.once: raise
             if args.once: break
             for _ in range(args.interval):

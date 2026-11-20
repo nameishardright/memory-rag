@@ -58,7 +58,7 @@ def cmd_stats():
               "有" if mr_index.has_weights(sp) else "无(pull-model %s)" % name, sp["note"]))
     for name in mr_index.MODELS:
         sp = mr_index.model_spec(name)
-        emb = os.path.join(mr_index.CACHE, "emb-%s.npy" % sp["slug"])
+        emb = mr_index.cache_file(sp["slug"])
         print("  %s%-22s 权重:%s  缓存:%s  %s" % ("*" if name == cur["key"] else " ", name,
               "有" if mr_index.has_weights(sp) else "无(pull-model %s)" % name,
               "有" if os.path.exists(emb) else "无", sp["note"]))
@@ -200,7 +200,7 @@ def cmd_log(days, src):
     if zero:
         print("\n0 命中(%d)——语料缺口或阴性题候选:" % len(zero))
         for r in zero[-20:]:
-            print("  %s  %s  [%s%s]" % (r["ts"][5:16], r["q"][:50], r.get("mode"), (" " + r["source"]) if r.get("source") else ""))
+            print("  %s  %s  [%s%s]" % (r["ts"][5:16], mr_corpus.redact(r["q"])[:50], r.get("mode"), (" " + r["source"]) if r.get("source") else ""))
     cands = []
     for sr in searches:
         if not sr.get("top"):
@@ -209,7 +209,7 @@ def cmd_log(days, src):
         hit_files = [t.split("#", 1)[0] for t in sr["top"]]
         for g in gets:
             if t0 <= g["ts"] <= _plus(t0, 120) and g.get("file") in hit_files:
-                cands.append({"q": sr["q"], "expect": [g["file"]], **({"source": sr["source"]} if sr.get("source") else {})})
+                cands.append({"q": mr_corpus.redact(sr["q"]), "expect": [g["file"]], **({"source": sr["source"]} if sr.get("source") else {})})
                 break
     seen, uniq = set(), []
     for c in cands:
@@ -266,7 +266,7 @@ def cmd_pull_model(name):
     if rr:
         print("重排权重 %s;用法:MR_RERANK=%s 或 --rerank %s" % ("就绪" if ok else "缺失", sp["key"], sp["key"]))
     else:
-        print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npy)" % ("就绪" if ok else "缺失", sp["slug"]))
+        print("权重 %s;首次 search/eval 会建 embedding 缓存(.cache/emb-%s.npz)" % ("就绪" if ok else "缺失", sp["slug"]))
     return ok
 
 

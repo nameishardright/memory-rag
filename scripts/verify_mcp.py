@@ -30,7 +30,7 @@ def main():
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.cache.mkdir(parents=True, exist_ok=True)
-    for pattern in ("emb-*.npy", "emb_meta-*.json"):
+    for pattern in ("emb-*.npz", "emb-*.npy", "emb_meta-*.json"):
         for path in args.models.glob(pattern):
             if not (args.cache / path.name).exists():
                 shutil.copy2(path, args.cache / path.name)

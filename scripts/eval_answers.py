@@ -102,7 +102,7 @@ def decode_tool_result(name, result):
 class MCP:
     def __init__(self, args):
         args.cache.mkdir(parents=True, exist_ok=True)
-        for pattern in ('emb-*.npy', 'emb_meta-*.json'):
+        for pattern in ('emb-*.npz', 'emb-*.npy', 'emb_meta-*.json'):
             for source in args.models.glob(pattern):
                 dest = args.cache/source.name
                 if not dest.exists():
