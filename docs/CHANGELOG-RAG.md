@@ -1,6 +1,22 @@
 # OneDrive 私有 RAG 变更记录
 
-最近更新：2026-11-05（issue #2 的修复，见第一节）；首次记录：2026-10-03。私有模块已合入 main（`5db082b`）；原交付分支 [`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+最近更新：2026-11-20（审计修复，未部署，见第一节）；上一次：2026-11-05（issue #2 的修复）；首次记录：2026-10-03。私有模块已合入 main（`5db082b`）；原交付分支 [`feat/encrypted-personal-corpus`](https://github.com/nameishardright/memory-rag/tree/feat/encrypted-personal-corpus)。代码提交 `560e374` 加入可选私有模块，`a87c8b6` 修复明确资料名的定位与段落检索。部署位置和后续操作见 [agent 接手说明](AGENT-HANDOFF.md)。
+
+## 2026-11-20：新一代先验收再上线、失败退避、向量断点（未部署）
+
+来源是 11-19 的代码审计。只在合成数据上跑过单测，还没在真实资料上跑；部署前照例在 OneDrive 之外用真实库的副本演练一遍。
+
+| 改动 | 效果 |
+|---|---|
+| `mr_private.import_journals(staged=True)` + `mr_private_maintenance.cycle`：库已存在时，新一代先写成 `corpus.candidate.enc`（连同 `corpus.candidate.status.json`、`coverage-review.candidate.enc`），对候选跑 `verify_live`，通过后再换成正式文件 | 验证不过：候选删掉，`corpus.enc` 和 `verification.json` 保持上一份，失败报告写到 `verification-rejected.json` 和运行目录的 `live-verification.json`。界面不会再加载没通过验收的库。首次发布（库还不存在）仍直接写 |
+| `import_journals`：个人分区指纹、各分区引用、覆盖统计都没变时不发布，返回值带 `unchanged: true` | 不再每轮重写 `corpus.enc`（新盐、新随机数，字节全变）；OneDrive 不用整库重传，界面不用整库重新解密。库没变且上一次验收通过时，本轮也不重跑验证 |
+| 维护循环：一轮失败后写 `maintenance-failure.json`，同一份源按 2、4、8……倍间隔重试，上限 6 小时；源变了立即重试；成功后清掉 | 不再每 5 分钟整轮重跑。`watcher.status.json` 新增状态 `backing_off` |
+| 维护循环：可重试缺口没变时，按 1、2、4、8、16、24 小时重试（`maintenance-checkpoint.json` 新增 `gap_retries`）；缺口数或源变了归零 | 永久读不了的文件不再每小时触发一轮 |
+| 维护循环：读检查点和算指纹挪进 try，检查点读不出来按空处理 | 这两步出错不再让后台进程退出 |
+| 维护循环：发现 `mr_private*.py` 变了，先核 `app-manifest.json` 里 `sha256` 列的每个文件，全部对上才重启；没对上就等，状态 `waiting_for_deployment`，期间不跑更新 | OneDrive 只同步了一半时不会重启到半新半旧的代码。🔴 手工改 app 里的文件而不更新清单，后台会一直等 |
+| `mr_private_semantic.PrivateVector.prepare`：中途保存改成「新编码满 512 个窗口或距上次保存满 60 秒」，并且至少隔上次保存耗时的 10 倍 | 以前要总行数恰好是 512 的倍数才存，前面有可复用窗口时可能很久不存。假编码器实测：20 万窗口、每行保存 0.1 毫秒时，保存 391 次 → 58 次，累计重写 3,924 万行 → 285 万行；一次中断最多丢 60 秒或 10 倍保存耗时的工作 |
+
+没改：界面的 10 分钟空闲锁（长任务用命令行 `prepare --scope`）；验证本身仍是整套重跑；范围策略误排除个人目录那条要在资料源电脑上按路径清单核过再动。
 
 ## 2026-11-05：代码块里的 `#` 行不再当标题（issue #2）
 
