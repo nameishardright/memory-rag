@@ -24,7 +24,7 @@ mr_tools.LOG_SRC = "mcp"   # 查询日志里区分真实会话查询和 CLI 手�
 
 
 def _warm_after_list():
-    if not _WARMED[0]:
+    if not _WARMED[0] and os.environ.get("MR_WARM"):
         _WARMED[0] = True
         try:
             mr_tools._ensure("hybrid")
